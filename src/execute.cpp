@@ -21,6 +21,7 @@ struct JoinAlgorithm {
     template <class T>
     auto run() {
         namespace views = ranges::views;
+        //Using generic hash table aliased in hash_config.h
         GenericHash<T, std::vector<size_t>> hash_table;
 
         if (build_left) {
