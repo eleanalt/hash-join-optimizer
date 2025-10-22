@@ -1,7 +1,8 @@
 #include <hardware.h>
 #include <plan.h>
 #include <table.h>
-#include "gen_hash.h"
+#include "hash_config.h"
+#include "base_std_hash.h"
 
 namespace Contest {
 
@@ -20,7 +21,7 @@ struct JoinAlgorithm {
     template <class T>
     auto run() {
         namespace views = ranges::views;
-        GenHash<T, std::vector<size_t>>& hash_table;
+        GenericHash<T, std::vector<size_t>> hash_table;
 
         if (build_left) {
             for (auto&& [idx, record]: left | views::enumerate) {
@@ -29,7 +30,7 @@ struct JoinAlgorithm {
                         using Tk = std::decay_t<decltype(key)>;
                         if constexpr (std::is_same_v<Tk, T>) {
                             
-                            if (hash_table.contains(key)) {
+                            if (!hash_table.contains(key)) {
                                 hash_table.emplace(key, std::vector<size_t>(1, idx));
                             } else {
                                 hash_table[key].push_back(idx);
@@ -75,7 +76,7 @@ struct JoinAlgorithm {
                     [&hash_table, idx = idx](const auto& key) {
                         using Tk = std::decay_t<decltype(key)>;
                         if constexpr (std::is_same_v<Tk, T>) {
-                            if (hash_table.contains(key)) {
+                            if (!hash_table.contains(key)) {
                                 hash_table.emplace(key, std::vector<size_t>(1, idx));
                             } else {
                                 hash_table[key].push_back(idx);
