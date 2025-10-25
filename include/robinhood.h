@@ -25,7 +25,7 @@ private:
     size_t size = 0;
     std::vector<Bucket> hash_table;
 
-    size_t get_index(const Key& key) {
+    size_t get_index(const Key& key) const {
         size_t hash = std::hash<Key>{}(key);
         return hash % capacity;
     }
@@ -44,6 +44,29 @@ private:
         }
 
     }
+
+    bool probe(const Key& key,size_t& out_index) const  {
+        size_t index = get_index(key);
+        size_t cur_psl = 0;
+
+        Bucket* cur_bucket = &hash_table[index];
+
+        while (cur_bucket->occupied && cur_psl <= cur_bucket->psl) {
+            if(cur_bucket->key == key) {
+                out_index = index;
+                return true;
+            }
+
+            cur_psl++;
+            index = (index + 1) % capacity;
+            cur_bucket = &hash_table[index];
+        }
+
+        return false;
+    }
+    
+
+    
 
 public:
 
@@ -80,13 +103,21 @@ public:
 
     //Checks whether key is contained in hash table
     bool contains(const Key& key) const  {
-        auto itr = hash_table.find(key); 
-        return itr != hash_table.end();
+        size_t index;
+        return probe(key,index);
     }
 
     //Retrieve value at index key
     Value& operator[](const Key& key) {
-        return hash_table[key];
+        size_t index;
+        if(probe(key,index)) {
+            return hash_table[index].value;
+        }
+
+        emplace(key,Value{});
+        probe(key,index);
+
+        return hash_table[index].value;
     }
 };
 
