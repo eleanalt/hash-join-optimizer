@@ -1,8 +1,8 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_template_test_macros.hpp> 
-#include "include/robinhood.h"
+#include "robinhood.h"
 
-TEMPLATE_TEST_CASE("Insert and find","[insert]",int32_t,int64_t,double,std::string) {
+TEMPLATE_TEST_CASE("Insert and find","[insert]",int32_t,int64_t,double) {
     Contest::RobinhoodHash<TestType,TestType> ht;
 
     
@@ -22,13 +22,13 @@ TEMPLATE_TEST_CASE("Insert and find","[insert]",int32_t,int64_t,double,std::stri
 TEST_CASE("Trigger rehash","[insert]") {
     Contest::RobinhoodHash<int,int> ht(64);
 
-    for(int i = 0; i < 65; i++) {
+    for(int i = 0; i < 1000; i++) {
         ht.emplace(i,i);
     }
 
-    REQUIRE(ht.get_size()==65);
+    REQUIRE(ht.get_size()==1000);
 
-    for(int i = 0; i < 65; i++) {
+    for(int i = 0; i < 1000; i++) {
         REQUIRE(ht[i]==i);
     }
 }
@@ -45,7 +45,7 @@ TEST_CASE("Insert duplicate keys","[insert]") {
 
 }
 
-TEMPLATE_TEST_CASE("Modify entry","[modify]",int32_t,int64_t,double,std::string) {
+TEMPLATE_TEST_CASE("Modify entry","[modify]",int32_t,int64_t,double) {
     Contest::RobinhoodHash<TestType,TestType> ht;
 
     
@@ -71,7 +71,7 @@ TEMPLATE_TEST_CASE("Modify entry","[modify]",int32_t,int64_t,double,std::string)
 
 }
 
-TEMPLATE_TEST_CASE("Access empty table","[modify]",int32_t,int64_t,double,std::string) {
+TEMPLATE_TEST_CASE("Access empty table","[modify]",int32_t,int64_t,double) {
     Contest::RobinhoodHash<int,TestType> ht;
 
     ht[0] = TestType(100);

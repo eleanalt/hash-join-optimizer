@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vector>
+#include <iostream>
 
 namespace Contest {
 
@@ -18,8 +19,8 @@ private:
         bool occupied = false;
     };
     
-    static constexpr size_t DEFAULT_CAPACITY = 128;
-    static constexpr double MAX_LOAD_FACTOR = 0.7;
+    static constexpr size_t DEFAULT_CAPACITY = 16384;
+    static constexpr double MAX_LOAD_FACTOR = 0.75;
 
     size_t capacity = DEFAULT_CAPACITY;
     size_t size = 0;
@@ -27,7 +28,15 @@ private:
 
     size_t get_index(const Key& key) const {
         size_t hash = std::hash<Key>{}(key);
-        return hash % capacity;
+
+        //murmur3 finalizer
+        hash ^= hash >> 33;
+        hash *= 0xff51afd7ed558ccdULL;
+        hash ^= hash >> 33;
+        hash *= 0xc4ceb9fe1a85ec53ULL;
+        hash ^= hash >> 33;
+
+        return hash & (capacity - 1); 
     }
 
     void rehash() {
@@ -49,7 +58,7 @@ private:
         size_t index = get_index(key);
         size_t cur_psl = 0;
 
-        Bucket* cur_bucket = &hash_table[index];
+        const Bucket* cur_bucket = &hash_table[index];
 
         while (cur_bucket->occupied && cur_psl <= cur_bucket->psl) {
             if(cur_bucket->key == key) {
@@ -86,7 +95,6 @@ public:
     //Inserts key value pair in hash table
     void emplace(const Key& key,const Value& value) {
 
-        if(contains(key)) return;
         if ((double)size/capacity > MAX_LOAD_FACTOR) {
             rehash();
         }
@@ -97,11 +105,12 @@ public:
         Bucket *cur_bucket = &hash_table[index];
 
         while (cur_bucket->occupied) {
+            if (cur_bucket->key == key) return;
             if (temp_bucket.psl > cur_bucket->psl) {
                 std::swap(temp_bucket,*cur_bucket);
-            } else {
-                temp_bucket.psl++;
-            }
+            } 
+
+            temp_bucket.psl++;
 
             index = (index + 1) % capacity;
             cur_bucket = &hash_table[index];
