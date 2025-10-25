@@ -74,9 +74,19 @@ public:
         hash_table.resize(DEFAULT_CAPACITY);
     }
 
+    RobinhoodHash(size_t init_capacity) {
+        hash_table.resize(init_capacity);
+        capacity = init_capacity;
+    }
+
+    size_t get_size() {
+        return size;
+    }
+
     //Inserts key value pair in hash table
     void emplace(const Key& key,const Value& value) {
 
+        if(contains(key)) return;
         if ((double)size/capacity > MAX_LOAD_FACTOR) {
             rehash();
         }
