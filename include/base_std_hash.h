@@ -12,6 +12,7 @@ class StdHash {
     std::unordered_map<Key,Value> hash_table;
 public:
 
+    
     //Inserts key value pair in hash table
     void emplace(const Key& key,const Value& value) {
         hash_table.emplace(key,value);
