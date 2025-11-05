@@ -1,7 +1,7 @@
 #pragma once
 #include "base_std_hash.h"
-// TO BE IMPLEMENTEDgi
-//#include "robinhood.h"
+// TO BE IMPLEMENTED
+#include "robinhood.h"
 //#include "cuckoo.h"
 //#include "hopscotch.h"
 
