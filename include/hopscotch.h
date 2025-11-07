@@ -147,16 +147,49 @@ void emplace(const Key& key, const Value& value) {
 }
 
 
-
-    //Checks whether key is contained in hash table
+//Checks whether key is contained in hash table
     bool contains(const Key& key) const  {
+        std::size_t home = get_index(key);
+        const auto& bmap = hash_table[home].bitmap;
+        //home slot
+        if (hash_table[home].occupied && hash_table[home].key == key) return true;
 
+        //only places that the bitmap shows
+        for(std::size_t bit=0; bit<H; ++bit) {
+            if(!bmap[bit]) continue;
+            std::size_t pos =(home + bit) & (capacity - 1);
+            if(hash_table[pos].occupied && hash_table[pos].key == key) return true;
+        }
+        return false;
     }
-
+    
+    
     //Retrieve value at index key
     Value& operator[](const Key& key) {
+        std::size_t home = get_index(key);
+        if(hash_table[home].occupied && hash_table[home].key==key) return hash_table[home].value;
+
+        auto& bmap = hash_table[home].bitmap;
+        for(std::size_t bit = 0; bit<H; ++bit){
+            if(!bmap[bit]) continue;
+            std::size_t pos = (home + bit)&(capacity - 1);
+            if(hash_table[pos].occupied && hash_table[pos].key == key) return hash_table[pos].value;
+
+        }
+        emplace(key, Value{});
+
+        home = get_index(key);
+        if(hash_table[home].occupied && hash_table[home].key == key) return hash_table[home].value;
+
+        for(std::size_t bit = 0; bit<H; ++bit){
+            if(!hash_table[home].bitmap[bit]) continue;
+            std::size_t pos = (home + bit)&(capacity - 1);
+            if(hash_table[pos].occupied && hash_table[pos].key == key) return hash_table[pos].value;
+        }
+            throw std::logic_error("operator failed to locate inserted key");
 
     }
+    
 };
 
 }
