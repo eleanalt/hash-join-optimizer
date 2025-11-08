@@ -2,7 +2,7 @@
 
 #include <unordered_map>
 #include <vector>
-#include <bitset>
+#include <cstdint>
 
 namespace Contest {
 
@@ -16,7 +16,7 @@ private:
     struct Bucket {
         Key key;
         Value value;
-        std::bitset<H> bitmap{0};
+        uint32_t bitmap = 0;
         bool occupied = false;
 
     };
@@ -28,12 +28,10 @@ private:
     size_t size = 0;
     std::vector<Bucket> hash_table;
 
-public:
-
     size_t get_index(const Key& key) const {
         size_t hash = std::hash<Key>{}(key);
 
-        //murmur3 finalizer
+       // murmur3 finalizer
         hash ^= hash >> 33;
         hash *= 0xff51afd7ed558ccdULL;
         hash ^= hash >> 33;
@@ -59,15 +57,16 @@ public:
 
 
     // Probe for empty position in hash_table after a given index
-    bool probe(const size_t& ref_index,size_t& out_index) const  {
+    bool probe(const size_t& ref_index,size_t& out_index)  {
 
         if(size == capacity) return false;
 
         size_t index = ref_index;
         while (hash_table[index].occupied) {
-            index = (index + 1) % capacity;
+            index = (index + 1) & (capacity-1);
         }
 
+        out_index = index;
         return true;
     }
 
@@ -76,15 +75,23 @@ public:
         return (to + capacity - from) & (capacity - 1);
     }
 
-public:
 
+public:
+    HopscotchHash() {
+        hash_table.resize(DEFAULT_CAPACITY);
+    }
+
+    HopscotchHash(size_t init_capacity) {
+        hash_table.resize(init_capacity);
+        capacity = init_capacity;
+    }
 //Inserts key value pair in hash table
 void emplace(const Key& key, const Value& value) {
     size_t index = get_index(key);
     size_t empty_index = 0;
 
     // If load factor exceeded,home index neighbourhood is full or no empty slot found rehash and retry
-    if ((double)size/capacity > MAX_LOAD_FACTOR || hash_table[index].bitmap.all() || !probe(index, empty_index)) {
+    if ((double)size/capacity > MAX_LOAD_FACTOR || hash_table[index].bitmap == 0xFFFFFFFFu || !probe(index, empty_index)) {
         rehash();
         index = get_index(key);
         probe(index, empty_index);
@@ -97,21 +104,26 @@ void emplace(const Key& key, const Value& value) {
         // For each candidate preceding empty slot by H -1
         for (size_t off = 1; off < H; ++off) {
             size_t candidate_bucket = (empty_index + capacity - off) & (capacity - 1);
-            std::bitset<H>& bitmap = hash_table[candidate_bucket].bitmap;
+            uint32_t &bitmap = hash_table[candidate_bucket].bitmap;
 
             // For each slot in candidates's neighbourhood
-            for (size_t bit = 0; bit < H; ++bit) {
-                if (!bitmap[bit]) continue;
+            uint32_t bits = bitmap;
+            while(bits) {
+                int bit = __builtin_ctz(bits);
 
                 size_t from = (candidate_bucket + bit) & (capacity - 1); // Slot being swapped
 
                 // Check element is before empty slot
-                if (dist(candidate_bucket, from) >= dist(candidate_bucket, empty_index))
+                if (dist(candidate_bucket, from) >= dist(candidate_bucket, empty_index)) {
+                    bits &= bits - 1;
                     continue;
+                }
 
                 // Check element stays in its home neighbourhood after moving
-                if (dist(candidate_bucket, empty_index) >= H)
+                if (dist(candidate_bucket, empty_index) >= H) {
+                    bits &= bits - 1;
                     continue;
+                }
 
                 // Perform the move
                 hash_table[empty_index].key = std::move(hash_table[from].key);
@@ -120,8 +132,8 @@ void emplace(const Key& key, const Value& value) {
                 hash_table[from].occupied = false;
 
                 // Fix bitmap
-                bitmap.reset(bit);
-                bitmap.set(dist(candidate_bucket, empty_index));
+                bitmap &= ~(1u << bit);
+                bitmap |= 1u << dist(candidate_bucket, empty_index);
 
                 empty_index = from;
                 moved = true;
@@ -142,7 +154,7 @@ void emplace(const Key& key, const Value& value) {
     hash_table[empty_index].key = key;
     hash_table[empty_index].value = value;
     hash_table[empty_index].occupied = true;
-    hash_table[index].bitmap.set(dist(index, empty_index));
+    hash_table[index].bitmap |= 1u << dist(index, empty_index);
     size++;
 }
 
@@ -150,15 +162,17 @@ void emplace(const Key& key, const Value& value) {
 //Checks whether key is contained in hash table
     bool contains(const Key& key) const  {
         std::size_t home = get_index(key);
-        const auto& bmap = hash_table[home].bitmap;
+        uint32_t bmap = hash_table[home].bitmap;
         //home slot
         if (hash_table[home].occupied && hash_table[home].key == key) return true;
 
         //only places that the bitmap shows
-        for(std::size_t bit=0; bit<H; ++bit) {
-            if(!bmap[bit]) continue;
+        uint32_t bits = bmap;
+        while(bits) {
+            int bit = __builtin_ctz(bits);
             std::size_t pos =(home + bit) & (capacity - 1);
             if(hash_table[pos].occupied && hash_table[pos].key == key) return true;
+            bits &= bits - 1;
         }
         return false;
     }
@@ -169,22 +183,25 @@ void emplace(const Key& key, const Value& value) {
         std::size_t home = get_index(key);
         if(hash_table[home].occupied && hash_table[home].key==key) return hash_table[home].value;
 
-        auto& bmap = hash_table[home].bitmap;
-        for(std::size_t bit = 0; bit<H; ++bit){
-            if(!bmap[bit]) continue;
+        uint32_t bmap = hash_table[home].bitmap;
+        uint32_t bits = bmap;
+        while(bits) {
+            int bit = __builtin_ctz(bits);
             std::size_t pos = (home + bit)&(capacity - 1);
             if(hash_table[pos].occupied && hash_table[pos].key == key) return hash_table[pos].value;
-
+            bits &= bits - 1;
         }
         emplace(key, Value{});
 
         home = get_index(key);
         if(hash_table[home].occupied && hash_table[home].key == key) return hash_table[home].value;
 
-        for(std::size_t bit = 0; bit<H; ++bit){
-            if(!hash_table[home].bitmap[bit]) continue;
+        bits = hash_table[home].bitmap;
+        while(bits) {
+            int bit = __builtin_ctz(bits);
             std::size_t pos = (home + bit)&(capacity - 1);
             if(hash_table[pos].occupied && hash_table[pos].key == key) return hash_table[pos].value;
+            bits &= bits - 1;
         }
             throw std::logic_error("operator failed to locate inserted key");
 
@@ -193,4 +210,3 @@ void emplace(const Key& key, const Value& value) {
 };
 
 }
-
