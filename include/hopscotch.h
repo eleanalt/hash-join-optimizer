@@ -77,14 +77,25 @@ private:
 
 
 public:
-    HopscotchHash() {
-        hash_table.resize(DEFAULT_CAPACITY);
-    }
+    static inline std::size_t next_pow2(std::size_t x) {
+    if (x == 0) return 1;
+    --x; x |= x>>1; x |= x>>2; x |= x>>4; x |= x>>8; x |= x>>16;
+#if SIZE_MAX > 0xffffffffu
+    x |= x>>32;
+#endif
+    return x+1;
+}
 
-    HopscotchHash(size_t init_capacity) {
-        hash_table.resize(init_capacity);
-        capacity = init_capacity;
-    }
+HopscotchHash() {
+    capacity = next_pow2(DEFAULT_CAPACITY);
+    hash_table.resize(capacity);
+}
+
+explicit HopscotchHash(std::size_t init_capacity) {
+    capacity = next_pow2(init_capacity ? init_capacity : 1);
+    hash_table.resize(capacity);
+}
+
 //Inserts key value pair in hash table
 void emplace(const Key& key, const Value& value) {
     size_t index = get_index(key);
