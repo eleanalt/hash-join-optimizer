@@ -18,9 +18,8 @@ private:
         unsigned int psl = 0;
         bool occupied = false;
     };
-    
-    static constexpr size_t DEFAULT_CAPACITY = 16384;
-    static constexpr double MAX_LOAD_FACTOR = 0.75;
+    static constexpr size_t DEFAULT_CAPACITY = 32768;
+    static constexpr double MAX_LOAD_FACTOR = 0.7;
 
     size_t capacity = DEFAULT_CAPACITY;
     size_t size = 0;
@@ -28,14 +27,12 @@ private:
 
     size_t get_index(const Key& key) const {
         size_t hash = std::hash<Key>{}(key);
-
-        //murmur3 finalizer
+        // Murmur3 finalizer, necessary for good index distributions and shorter PSL chains
         hash ^= hash >> 33;
         hash *= 0xff51afd7ed558ccdULL;
         hash ^= hash >> 33;
         hash *= 0xc4ceb9fe1a85ec53ULL;
         hash ^= hash >> 33;
-
         return hash & (capacity - 1); 
     }
 
@@ -58,18 +55,18 @@ private:
         size_t index = get_index(key);
         size_t cur_psl = 0;
 
-        const Bucket* cur_bucket = &hash_table[index];
-
-        while (cur_bucket->occupied && cur_psl <= cur_bucket->psl) {
-            if(cur_bucket->key == key) {
-                out_index = index;
-                return true;
+        // Search until key found or probed bucket psl violates robinhood invariant
+        while (true) {
+            const Bucket &bucket = hash_table[index];
+            if (!bucket.occupied || cur_psl > bucket.psl) return false;
+            if (bucket.key == key) { 
+                out_index = index; 
+                return true; 
             }
-
             cur_psl++;
-            index = (index + 1) % capacity;
-            cur_bucket = &hash_table[index];
+            index = (index + 1) & (capacity - 1);
         }
+
 
         return false;
     }
@@ -101,22 +98,21 @@ public:
 
         size_t index = get_index(key);
 
-        Bucket temp_bucket = Bucket{key,value,0,true};
-        Bucket *cur_bucket = &hash_table[index];
+        Bucket temp_bucket = Bucket{key,std::move(value),0,true};
 
-        while (cur_bucket->occupied) {
-            if (cur_bucket->key == key) return;
-            if (temp_bucket.psl > cur_bucket->psl) {
-                std::swap(temp_bucket,*cur_bucket);
+        // Probe occupied buckets
+        while (hash_table[index].occupied) {
+            if (hash_table[index].key == key) return; // Ignore emplace for existing key
+            if (temp_bucket.psl > hash_table[index].psl) { // Bucket at current probing position has higher psl
+                std::swap(temp_bucket,hash_table[index]); // Steal bucket
             } 
 
             temp_bucket.psl++;
 
-            index = (index + 1) % capacity;
-            cur_bucket = &hash_table[index];
+            index = (index + 1) & (capacity - 1);
         }
 
-        *cur_bucket = temp_bucket;
+        hash_table[index] = temp_bucket;
         size++;
     }
 

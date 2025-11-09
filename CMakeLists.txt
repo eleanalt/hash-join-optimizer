@@ -92,6 +92,8 @@ add_executable(unit_tests ${SIGMODPC_SRC} tests/unit_tests.cpp)
 add_executable(build_database tests/build_database.cpp)
 add_executable(robinhood_tests ${SIGMODPC_SRC} tests/robinhood_tests.cpp)
 add_executable(cuckoo_tests ${SIGMODPC_SRC} tests/cuckoo_tests.cpp)
+add_executable(hopscotch_tests ${SIGMODPC_SRC} tests/hopscotch_tests.cpp)
+
 
 # For all executables
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
@@ -117,6 +119,8 @@ target_link_libraries(build_database PRIVATE fmt duckdb)
 target_link_libraries(unit_tests PRIVATE re2 range-v3 fmt Catch2::Catch2WithMain)
 target_link_libraries(robinhood_tests PRIVATE re2 range-v3 fmt Catch2::Catch2WithMain)
 target_link_libraries(cuckoo_tests PRIVATE re2 range-v3 fmt Catch2::Catch2WithMain)
+target_link_libraries(hopscotch_tests PRIVATE re2 range-v3 fmt Catch2::Catch2WithMain)
+
 
 
 target_include_directories(run PRIVATE include)
@@ -126,6 +130,7 @@ target_include_directories(robinhood_tests PRIVATE include)
 target_include_directories(cuckoo_tests PRIVATE include)
 
 
+target_include_directories(hopscotch_tests PRIVATE include)
 
 
 
