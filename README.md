@@ -179,3 +179,26 @@ cmake --build build -- -j $(nproc) fast
 ```
 
 Code is compiled with Clang 18.
+
+# Phase 1 / Hashing Algorithms
+
+1115202100089 Ελεάνα Λύτη - Cuckoo Hashing and contains(),operator[] methods() for Hopscotch
+1115202100174 Αλέξιος Σούλι - Robinhood Hashing and emplace() method for Hopscotch
+
+
+To configure which hashing algorithm to use replace ``` StdHash<Key,Value> ``` 
+in hash_config.h with ```RobinhoodHash<Key,Value>``` for Robinhood
+                      ```CuckooHash<Key,Value>``` for Cuckoo
+                      ```HopscotchHash<Key,Value>``` for Hopscotch
+
+To compile unit tests run      ```cmake --build build -- -j $(nproc) robinhood_tests```
+                               ```cmake --build build -- -j $(nproc) cuckoo_tests```
+                               ```cmake --build build -- -j $(nproc) hopscotch_tests```
+
+
+# Performance 
+
+Base:      340k ms
+Robinhood: 333k ms
+Hopscotch: 343k ms
+Cuckoo:    330k ms
