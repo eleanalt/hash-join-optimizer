@@ -180,25 +180,59 @@ cmake --build build -- -j $(nproc) fast
 
 Code is compiled with Clang 18.
 
-# Phase 1 / Hashing Algorithms
+# Phase 1 — Hashing Algorithms
 
-1115202100089 Ελεάνα Λύτη - Cuckoo Hashing and contains(),operator[] methods() for Hopscotch
-1115202100174 Αλέξιος Σούλι - Robinhood Hashing and emplace() method for Hopscotch
+## Contributors
+Our implementation of custom hash tables for Phase 1 was developed collaboratively:
+
+- **1115202100089 — Ελεάνα Λύτη**  
+  Implemented **Cuckoo Hashing**, as well as the **contains()** and **operator[]** methods for the Hopscotch Hashing variant.
+
+- **1115202100174 — Αλέξιος Σούλι**  
+  Implemented **Robinhood Hashing** and the **emplace()** method for Hopscotch Hashing.
+
+## Selecting a Hashing Algorithm
+To choose which hashing algorithm the system uses, modify the template alias in `hash_config.h` by replacing  
+`StdHash<Key,Value>` with one of the following:
+
+- `RobinhoodHash<Key,Value>` — Robinhood Hashing  
+- `CuckooHash<Key,Value>` — Cuckoo Hashing  
+- `HopscotchHash<Key,Value>` — Hopscotch Hashing  
+
+This allows quick experimentation with different strategies during evaluation.
+
+## Unit Tests
+
+Each hashing implementation includes its own test suite. You can build them with:
+
+- `cmake --build build -- -j $(nproc) robinhood_tests`  
+- `cmake --build build -- -j $(nproc) cuckoo_tests`  
+- `cmake --build build -- -j $(nproc) hopscotch_tests`  
+
+## Algorithm Notes
+
+### Robinhood Hashing
+Our Robinhood Hashing implementation follows the standard probe-distance balancing strategy.
+We use `std::hash` as the base hashing function and apply a **Murmur3 finalizer** to improve distribution quality. This significantly reduced maximum probe sequence lengths—by up to 95% in our tests (PSL directly impacts lookup and insertion performance).
+Given Robinhood Hashing's ability to maintain efficient performance at high load factors (0.90+), we selected **0.9** as a practical and well-balanced target load factor.
+
+### Cuckoo Hashing
+Our Cuckoo Hashing implementation uses **two independent hash functions** to assign each key to one of two possible positions in separate tables. Both hash functions start with `std::hash` as a base and then apply **custom bit-mixing routines** (shift and XOR operations) to improve randomness and reduce collisions. This ensures that each key has two independent candidate positions, enabling **constant-time lookups** by checking at most two locations.
+
+To maintain efficiency and prevent long displacement cycles, we selected a **maximum load factor of 0.5**. When this threshold is exceeded, the table is **rehashed and doubled in size**, guaranteeing that insertions remain fast and lookups maintain O(1) performance.
+
+### Hopscotch Hashing
+Our Hopscotch Hashing implementation uses **`std::hash` with a Murmur3-inspired finalizer** to distribute keys uniformly. Each bucket maintains a **bitmap representing a fixed-size neighborhood (`H = 32`)**, allowing keys to be moved within this neighborhood to resolve collisions efficiently. The neighborhood size makes the most of **cache locality** while remaining within the **32-bit bitmap limit**, which allows fast bitwise operations for checking and accessing occupancy. We selected a **practical load factor of 0.9**, which keeps most insertions local and ensures O(1) lookups while maintaining high cache efficiency.
+
+## Performance (Hash Table Only)
+
+Below are the execution times measured during benchmarking:
+
+| Hash Implementation | Time (ms) |
+|--------------------|-----------|
+| **UnorderedMap (Base)** | 340k ms   |
+| **Robinhood**      | 333k ms   |
+| **Hopscotch**      | 343k ms   |
+| **Cuckoo**         | 330k ms   |
 
 
-To configure which hashing algorithm to use replace ``` StdHash<Key,Value> ``` 
-in hash_config.h with ```RobinhoodHash<Key,Value>``` for Robinhood
-                      ```CuckooHash<Key,Value>``` for Cuckoo
-                      ```HopscotchHash<Key,Value>``` for Hopscotch
-
-To compile unit tests run      ```cmake --build build -- -j $(nproc) robinhood_tests```
-                               ```cmake --build build -- -j $(nproc) cuckoo_tests```
-                               ```cmake --build build -- -j $(nproc) hopscotch_tests```
-
-
-# Performance 
-
-Base:      340k ms
-Robinhood: 333k ms
-Hopscotch: 343k ms
-Cuckoo:    330k ms
