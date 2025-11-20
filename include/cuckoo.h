@@ -18,7 +18,7 @@ private:
     };
 
     static constexpr double MAX_LOAD_FACTOR = 0.5;
-    static constexpr std::size_t DEFAULT_CAPACITY = 1024;
+    static constexpr std::size_t DEFAULT_CAPACITY = 4194304; // 2^22, max size
 
     std::size_t capacity;
     std::size_t sz = 0;
