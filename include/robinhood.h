@@ -19,7 +19,7 @@ private:
         bool occupied = false;
     };
     static constexpr size_t DEFAULT_CAPACITY = 32768;
-    static constexpr double MAX_LOAD_FACTOR = 0.7;
+    static constexpr double MAX_LOAD_FACTOR = 0.9;
 
     size_t capacity = DEFAULT_CAPACITY;
     size_t size = 0;
