@@ -1,23 +1,26 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_template_test_macros.hpp> 
 #include "robinhood.h"
+TEMPLATE_TEST_CASE("Insert and find", "[insert]", int32_t, int64_t, double) {
+    Contest::RobinhoodHash<TestType, TestType> ht;
 
-TEMPLATE_TEST_CASE("Insert and find","[insert]",int32_t,int64_t,double) {
-    Contest::RobinhoodHash<TestType,TestType> ht;
+    const int N = 100;
+    for (int i = 0; i < N; i++) {
+        ht.emplace(TestType(i), TestType(i * 10));
+    }
 
-    
-    ht.emplace(TestType(0),TestType(10));
-    ht.emplace(TestType(1),TestType(11));
-    ht.emplace(TestType(2),TestType(12));
+    for (int i = 0; i < N; i++) {
+        REQUIRE(ht.contains(TestType(i)));
+        REQUIRE(ht[TestType(i)] == TestType(i * 10));
+    }
 
-    REQUIRE(ht.contains(TestType(0)));
-    REQUIRE(ht.contains(TestType(1)));
-    REQUIRE(ht.contains(TestType(2)));
-    REQUIRE(ht.get_size()==3);
+    for (int i = N; i < N + 10; i++) {
+        REQUIRE(!ht.contains(TestType(i)));
+    }
 
-    REQUIRE(!ht.contains(3));
-
+    REQUIRE(ht.get_size() == N);
 }
+
 
 TEST_CASE("Trigger rehash","[insert]") {
     Contest::RobinhoodHash<int,int> ht(64);
