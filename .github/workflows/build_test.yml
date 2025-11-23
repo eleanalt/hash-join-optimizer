@@ -1,19 +1,42 @@
-name: CI
+name: Build & Test
 
 on:
   push:
+    branches: [ main ]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   build-and-test:
     runs-on:
       group: k23a
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Configure
-        run: cmake -S . -B build
+      - name: Configure CMake
+        run: |
+          mkdir -p build
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build all tests
+        run: |
+          cmake --build build -- -j$(nproc) unit_tests robinhood_tests cuckoo_tests hopscotch_tests
+
+      - name: Run unit tests
+        run: ./build/unit_tests
+
+      - name: Run robinhood tests
+        run: ./build/robinhood_tests
+
+      - name: Run cuckoo tests
+        run: ./build/cuckoo_tests
+
+      - name: Run hopscotch tests
+        run: ./build/hopscotch_tests
+
+      - name: Optionally build fast (do NOT run)
+        run: cmake --build build --target fast
 
       - name: Build
         run: cmake --build build -j$(nproc)
