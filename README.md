@@ -199,7 +199,7 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -Wno-dev -DHASH_ALGO={algo} &&
 cmake --build build --target fast
 ```
 
-,replacing `{algo}` with one of the following:
+Replace `{algo}` with one of the following:
 
 - `robinhood` — Robinhood Hashing  
 - `cuckoo` — Cuckoo Hashing  
