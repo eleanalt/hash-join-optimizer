@@ -192,14 +192,19 @@ Our implementation of custom hash tables for Phase 1 was developed collaborative
   Implemented **Robinhood Hashing** and the **emplace()** method for Hopscotch Hashing.
 
 ## Selecting a Hashing Algorithm
-To choose which hashing algorithm the system uses, modify the template alias in `hash_config.h` by replacing  
-`StdHash<Key,Value>` with one of the following:
+To compile with a specific hashing algorithm other than `std::unordered_map` run:
 
-- `RobinhoodHash<Key,Value>` — Robinhood Hashing  
-- `CuckooHash<Key,Value>` — Cuckoo Hashing  
-- `HopscotchHash<Key,Value>` — Hopscotch Hashing  
+``` 
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -Wno-dev -DHASH_ALGO={algo} && 
+cmake --build build --target fast
+```
 
-This allows quick experimentation with different strategies during evaluation.
+,replacing `{algo}` with one of the following:
+
+- `robinhood` — Robinhood Hashing  
+- `cuckoo` — Cuckoo Hashing  
+- `hopscotch` — Hopscotch Hashing  
+
 
 ## Unit Tests
 

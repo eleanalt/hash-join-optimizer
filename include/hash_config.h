@@ -1,14 +1,22 @@
 #pragma once
-#include "base_std_hash.h"
 
+#ifdef USE_ROBINHOOD_HASH
 #include "robinhood.h"
-#include "cuckoo.h"
+template <typename Key, typename Value>
+using GenericHash = Contest::RobinhoodHash<Key,Value>;
+
+#elif defined(USE_HOPSCOTCH_HASH)
 #include "hopscotch.h"
+template <typename Key, typename Value>
+using GenericHash = Contest::HopscotchHash<Key,Value>;
 
-namespace Contest {
+#elif defined(USE_CUCKOO_HASH)
+#include "cuckoo.h"
+template <typename Key, typename Value>
+using GenericHash = Contest::CuckooHash<Key,Value>;
 
-// Configure Hasing Algorithm used by changing GenricHash alias.
-template<typename Key, typename Value>
-using GenericHash = StdHash<Key,Value>; // Change hashing algorithm here
-
-}
+#else
+#include "base_std_hash.h" // fallback
+template <typename Key, typename Value>
+using GenericHash = Contest::StdHash<Key,Value>;
+#endif

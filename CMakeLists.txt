@@ -133,4 +133,15 @@ target_include_directories(cuckoo_tests PRIVATE include)
 target_include_directories(hopscotch_tests PRIVATE include)
 
 
+option(HASH_ALGO "Which hash algorithm to use" "std")
+
+if(HASH_ALGO STREQUAL "robinhood")
+    add_compile_definitions(USE_ROBINHOOD_HASH)
+elseif(HASH_ALGO STREQUAL "hopscotch")
+    add_compile_definitions(USE_HOPSCOTCH_HASH)
+elseif(HASH_ALGO STREQUAL "cuckoo")
+    add_compile_definitions(USE_CUCKOO_HASH)
+else()
+    add_compile_definitions(USE_STD_HASH)
+endif()
 
