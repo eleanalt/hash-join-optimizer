@@ -4,6 +4,7 @@ struct StrRef {
 
     uint64_t ref = 0;
 
+    // MSB is unused for StrRef
     static constexpr uint64_t NULL_BIT = 1ull << 62;
     static constexpr uint64_t LONG_BIT = 1ull << 61;
 
@@ -61,6 +62,27 @@ struct StrRef {
     
     bool is_null() const { return ref & NULL_BIT; }
     bool is_long() const { return ref & LONG_BIT; }
+
+
+};
+
+struct value_t {
+    // MSB 0 -> int32_t
+    // MSB 1 -> StrRef
+    uint64_t value; 
+
+    void parse_int32(int32_t num) {
+        value = static_cast<uint32_t>(num);
+        value &= ~(1ull << 63); // mark value as int32
+    }
+
+    void parse_strref(StrRef str) {
+        value = str.ref & ~(1ull << 63);
+        value |= (1ull << 63);
+    }
+
+    bool is_int32() { return !(value >> 63);}
+    bool is_strref() { return (value >> 63);}
 
 
 };
