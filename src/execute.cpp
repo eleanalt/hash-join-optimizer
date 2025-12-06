@@ -1,12 +1,14 @@
 #include <hardware.h>
 #include <plan.h>
 #include <table.h>
+#include <inner_column.h>
 #include "hash_config.h"
 #include "base_std_hash.h"
+#include "value_t.h"
 
 namespace Contest {
 
-using ExecuteResult = std::vector<std::vector<Data>>;
+using ExecuteResult = std::vector<std::vector<value_t>>;
 
 ExecuteResult execute_impl(const Plan& plan, size_t node_idx);
 
@@ -22,102 +24,51 @@ struct JoinAlgorithm {
     auto run() {
         namespace views = ranges::views;
         //Using generic hash table aliased in hash_config.h
-        GenericHash<T, std::vector<size_t>> hash_table;
+        GenericHash<uint32_t, std::vector<size_t>> hash_table;
 
-        if (build_left) {
-            for (auto&& [idx, record]: left | views::enumerate) {
-                std::visit(
-                    [&hash_table, idx = idx](const auto& key) {
-                        using Tk = std::decay_t<decltype(key)>;
-                        if constexpr (std::is_same_v<Tk, T>) {
-                            
-                            if (!hash_table.contains(key)) {
-                                hash_table.emplace(key, std::vector<size_t>(1, idx));
-                            } else {
-                                hash_table[key].push_back(idx);
-                            }
-                        } else if constexpr (not std::is_same_v<Tk, std::monostate>) {
-                            throw std::runtime_error("wrong type of field");
-                        }
-                    },
-                    record[left_col]);
+        ExecuteResult& build_side = build_left ? left : right;
+        ExecuteResult& probe_side = build_left ? right : left;
+
+        size_t build_col = build_left ? left_col : right_col;
+        size_t probe_col = build_left ? right_col : left_col;
+
+            for (auto&& [idx, record]: build_side | views::enumerate) {
+                if(!record[build_col].is_int32()) throw std::runtime_error("Join key isn't of type int32_t");
+
+                uint32_t key = record[build_col].get_int32();
+                          
+                if (!hash_table.contains(key)) {
+                    hash_table.emplace(key, std::vector<size_t>(1, idx));
+                } else {
+                    hash_table[key].push_back(idx);
+                }
+
             }
-            for (auto& right_record: right) {
-                std::visit(
-                    [&](const auto& key) {
-                        using Tk = std::decay_t<decltype(key)>;
-                        if constexpr (std::is_same_v<Tk, T>) {
-                            if (hash_table.contains(key)) {
-                                auto& indices = hash_table[key];
 
-                                for (auto left_idx: indices) {
-                                    auto&             left_record = left[left_idx];
-                                    std::vector<Data> new_record;
-                                    new_record.reserve(output_attrs.size());
-                                    for (auto [col_idx, _]: output_attrs) {
-                                        if (col_idx < left_record.size()) {
-                                            new_record.emplace_back(left_record[col_idx]);
-                                        } else {
-                                            new_record.emplace_back(
-                                                right_record[col_idx - left_record.size()]);
-                                        }
-                                    }
-                                    results.emplace_back(std::move(new_record));
+            for (auto& probe_record: probe_side) {
+                uint32_t key = probe_record[probe_col].get_int32();
+
+                    if (hash_table.contains(key)) {
+                        auto& indices = hash_table[key];
+
+                        for (auto build_idx: indices) {
+                            auto&             build_record = build_side[build_idx];
+                            std::vector<value_t> new_record;
+                            new_record.reserve(output_attrs.size());
+
+                            for (auto [col_idx, _]: output_attrs) {
+                                if (col_idx < build_record.size()) {
+                                    new_record.emplace_back(build_record[col_idx]);
+                                } else {
+                                    new_record.emplace_back(
+                                    probe_record[col_idx - build_record.size()]);
                                 }
                             }
-                        } else if constexpr (not std::is_same_v<Tk, std::monostate>) {
-                            throw std::runtime_error("wrong type of field");
+                            results.emplace_back(std::move(new_record));
                         }
-                    },
-                    right_record[right_col]);
-            }
-        } else {
-            for (auto&& [idx, record]: right | views::enumerate) {
-                std::visit(
-                    [&hash_table, idx = idx](const auto& key) {
-                        using Tk = std::decay_t<decltype(key)>;
-                        if constexpr (std::is_same_v<Tk, T>) {
-                            if (!hash_table.contains(key)) {
-                                hash_table.emplace(key, std::vector<size_t>(1, idx));
-                            } else {
-                                hash_table[key].push_back(idx);
-                            }
-                        } else if constexpr (not std::is_same_v<Tk, std::monostate>) {
-                            throw std::runtime_error("wrong type of field");
-                        }
-                    },
-                    record[right_col]);
-            }
-            for (auto& left_record: left) {
-                std::visit(
-                    [&](const auto& key) {
-                        using Tk = std::decay_t<decltype(key)>;
-                        if constexpr (std::is_same_v<Tk, T>) {
-                            if (hash_table.contains(key)) {
-                                auto& indices = hash_table[key];
-
-                                for (auto right_idx: indices) {
-                                    auto&             right_record = right[right_idx];
-                                    std::vector<Data> new_record;
-                                    new_record.reserve(output_attrs.size());
-                                    for (auto [col_idx, _]: output_attrs) {
-                                        if (col_idx < left_record.size()) {
-                                            new_record.emplace_back(left_record[col_idx]);
-                                        } else {
-                                            new_record.emplace_back(
-                                                right_record[col_idx - left_record.size()]);
-                                        }
-                                    }
-                                    results.emplace_back(std::move(new_record));
-                                }
-                            }
-                        } else if constexpr (not std::is_same_v<Tk, std::monostate>) {
-                            throw std::runtime_error("wrong type of field");
-                        }
-                    },
-                    left_record[left_col]);
-            }
+                    }
         }
+
     }
 };
 
@@ -132,7 +83,7 @@ ExecuteResult execute_hash_join(const Plan&          plan,
     auto&                          right_types = right_node.output_attrs;
     auto                           left        = execute_impl(plan, left_idx);
     auto                           right       = execute_impl(plan, right_idx);
-    std::vector<std::vector<Data>> results;
+    std::vector<std::vector<value_t>> results;
 
     JoinAlgorithm join_algorithm{.build_left = join.build_left,
         .left                                = left,
@@ -160,12 +111,115 @@ ExecuteResult execute_hash_join(const Plan&          plan,
     return results;
 }
 
+bool get_bitmap(const uint8_t* bitmap, uint16_t idx) {
+    auto byte_idx = idx / 8;
+    auto bit      = idx % 8;
+    return bitmap[byte_idx] & (1u << bit);
+}
+
+std::vector<std::vector<value_t>> copy_scan(const ColumnarTable& table, size_t table_id,
+    const std::vector<std::tuple<size_t, DataType>>& output_attrs) {
+    
+    namespace views = ranges::views;
+
+    std::vector<std::vector<value_t>> results(table.num_rows, std::vector<value_t>(output_attrs.size(),value_t{}) );
+    std::vector<DataType>          types(table.columns.size());
+
+    auto task = [&](size_t begin, size_t end) {
+        size_t col_pap = 0;
+
+        for (size_t column_idx = begin; column_idx < end; ++column_idx) {
+
+            size_t in_col_idx = std::get<0>(output_attrs[column_idx]);
+            auto& column = table.columns[in_col_idx];
+            types[in_col_idx] = column.type;
+            size_t row_idx = 0;
+
+            for (size_t page_idx = 0; page_idx < column.pages.size(); ++page_idx) {
+                auto* page = column.pages[page_idx]->data;
+
+                switch (column.type) {
+                case DataType::INT32: {
+                    auto  num_rows   = *reinterpret_cast<uint16_t*>(page);
+                    auto* data_begin = reinterpret_cast<int32_t*>(page + 4);
+
+                    auto* bitmap =
+                        reinterpret_cast<uint8_t*>(page + PAGE_SIZE - (num_rows + 7) / 8);
+
+                    uint16_t data_idx = 0;
+
+                    for (uint16_t i = 0; i < num_rows; ++i) {
+                        if (get_bitmap(bitmap, i)) {
+                            auto value = data_begin[data_idx++];
+                            if (row_idx >= table.num_rows) {
+                                throw std::runtime_error("row_idx");
+                            }
+                            results[row_idx++][column_idx].parse_int32(value);
+                        } else {
+                            ++row_idx;
+                        }
+                    }
+                    break;
+                }
+
+                case DataType::VARCHAR: {
+                    auto num_rows = *reinterpret_cast<uint16_t*>(page);
+
+                    if (num_rows == 0xffff) { //long string
+                        auto        num_chars  = *reinterpret_cast<uint16_t*>(page + 2);
+                        auto*       data_begin = reinterpret_cast<char*>(page + 4);
+                        std::string value{data_begin, data_begin + num_chars};
+
+                        if (row_idx >= table.num_rows) {
+                            throw std::runtime_error("row_idx");
+                        }
+                        
+                        StrRef ref(true,table_id,in_col_idx,page_idx,0);
+                        results[row_idx++][column_idx].parse_strref(ref);
+
+                    } else if (num_rows == 0xfffe) {
+                        continue; // ignore subsequent special pages
+
+                    } else {
+                        auto  num_non_null = *reinterpret_cast<uint16_t*>(page + 2);
+                        auto* offset_begin = reinterpret_cast<uint16_t*>(page + 4);
+                        auto* data_begin   = reinterpret_cast<char*>(page + 4 + num_non_null * 2);
+                        auto* string_begin = data_begin;
+                        auto* bitmap =
+                            reinterpret_cast<uint8_t*>(page + PAGE_SIZE - (num_rows + 7) / 8);
+
+                        uint16_t data_idx = 0;
+                        for (uint16_t i = 0; i < num_rows; ++i) {
+                            if (get_bitmap(bitmap, i)) {
+
+                                if (row_idx >= table.num_rows) {
+                                    throw std::runtime_error("row_idx");
+                                }
+
+                                StrRef ref(false,table_id,in_col_idx,page_idx,data_idx++);
+                                results[row_idx++][column_idx].parse_strref(ref);
+                            } else {
+                                ++row_idx;
+                            }
+                        }
+                    }
+                    break;
+                }
+                }
+            }
+        }
+    };
+    filter_tp.run(task, output_attrs.size());
+    return results;
+}
+
 ExecuteResult execute_scan(const Plan&               plan,
     const ScanNode&                                  scan,
     const std::vector<std::tuple<size_t, DataType>>& output_attrs) {
+
     auto                           table_id = scan.base_table_id;
     auto&                          input    = plan.inputs[table_id];
-    return Table::copy_scan(input, output_attrs);
+    return copy_scan(input,table_id,output_attrs);
 }
 
 ExecuteResult execute_impl(const Plan& plan, size_t node_idx) {
@@ -185,9 +239,11 @@ ExecuteResult execute_impl(const Plan& plan, size_t node_idx) {
 ColumnarTable execute(const Plan& plan, [[maybe_unused]] void* context) {
     namespace views = ranges::views;
     auto ret        = execute_impl(plan, plan.root);
+    
     auto ret_types  = plan.nodes[plan.root].output_attrs
                    | views::transform([](const auto& v) { return std::get<1>(v); })
                    | ranges::to<std::vector<DataType>>();
+
     Table table{std::move(ret), std::move(ret_types)};
     return table.to_columnar();
 }

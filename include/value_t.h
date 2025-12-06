@@ -1,12 +1,13 @@
 #include <cstdint>
 
+namespace Contest {
+
 struct StrRef {
 
     uint64_t ref = 0;
 
-    // MSB is unused for StrRef
-    static constexpr uint64_t NULL_BIT = 1ull << 62;
-    static constexpr uint64_t LONG_BIT = 1ull << 61;
+    // 2 MSBs are unused for StrRef
+    static constexpr uint64_t LONGSTR_BIT = 1ull << 61;
 
     static constexpr int TABLE_LEN  = 10;
     static constexpr int COLUMN_LEN = 10;
@@ -28,10 +29,9 @@ struct StrRef {
 
     StrRef() = default;
 
-    StrRef(bool is_null,bool is_long,uint64_t table,uint64_t col, uint64_t page, uint64_t off_idx) {
+    StrRef(bool is_long,uint64_t table,uint64_t col, uint64_t page, uint64_t off_idx) {
         
-        if(is_null){ref |= NULL_BIT; return;} // string is null
-        if(is_long) ref |= LONG_BIT;
+        if(is_long) ref |= LONGSTR_BIT;
 
         ref |= (table & TABLE_MASK) << TABLE_SHIFT;
         ref |= (col & COLUMN_MASK) << COLUMN_SHIFT;
@@ -44,10 +44,9 @@ struct StrRef {
         ref = 0;
     }
 
-    void encode(bool is_null =false ,bool is_long=false,uint64_t table=0,uint64_t col=0, uint64_t page=0, uint64_t off_idx=0) {
+    void encode(bool is_long=false,uint64_t table=0,uint64_t col=0, uint64_t page=0, uint64_t off_idx=0) {
   
-        if(is_null){ref |= NULL_BIT; return;} // string is null so refernce bits dont matter
-        if(is_long) ref |= LONG_BIT;
+        if(is_long) ref |= LONGSTR_BIT;
 
         ref |= (table & TABLE_MASK) << TABLE_SHIFT;
         ref |= (col & COLUMN_MASK) << COLUMN_SHIFT;
@@ -60,29 +59,43 @@ struct StrRef {
     uint64_t get_page() const { return (ref >> PAGE_SHIFT) & PAGE_MASK; }
     uint64_t get_offset() const { return (ref >> OFFSET_SHIFT) & OFFSET_MASK; }
     
-    bool is_null() const { return ref & NULL_BIT; }
-    bool is_long() const { return ref & LONG_BIT; }
+    bool is_long() const { return ref & LONGSTR_BIT; }
 
 
 };
 
 struct value_t {
-    // MSB 0 -> int32_t
-    // MSB 1 -> StrRef
-    uint64_t value; 
+    // MSB 01 -> int32_t
+    // MSB 10 -> StrRef
+    // MSB 00 -> Null
+
+    uint64_t value = 0; 
 
     void parse_int32(int32_t num) {
         value = static_cast<uint32_t>(num);
-        value &= ~(1ull << 63); // mark value as int32
+        value |= (1ull << 62); // mark value as int32
     }
 
     void parse_strref(StrRef str) {
-        value = str.ref & ~(1ull << 63);
+        value = str.ref & ~(3ull << 62);
         value |= (1ull << 63);
     }
 
-    bool is_int32() { return !(value >> 63);}
-    bool is_strref() { return (value >> 63);}
+    bool is_int32() const { return (value >> 62) == 1;}
+    bool is_strref() const { return (value >> 62) == 2;}
+    bool is_null() const { return (value >> 62) == 0;}
+
+    int32_t get_int32() const {
+        return static_cast<int32_t>(value); 
+    }
+
+    StrRef get_strref() const { 
+        StrRef ref; 
+        ref.ref = value & ~(3ull << 62); 
+        return ref; 
+    }
 
 
 };
+
+}
