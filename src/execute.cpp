@@ -213,6 +213,63 @@ std::vector<std::vector<value_t>> copy_scan(const ColumnarTable& table, size_t t
     return results;
 }
 
+std::string deref_str_ref(StrRef ref,const std::vector<ColumnarTable>& inputs) {
+    const ColumnarTable& table = inputs[ref.get_table()];
+    const Column& col = table.columns[ref.get_column()];
+    size_t page_idx = ref.get_page();
+    auto* raw = col.pages[page_idx]->data;
+    auto num_rows = *reinterpret_cast<uint16_t*>(raw);
+
+    std::string deref_str;
+
+    if(ref.is_long()) { // long string
+        if(num_rows != 0xffff) throw std::runtime_error("Page doesn't refer to long string");     
+
+        auto        num_chars  = *reinterpret_cast<uint16_t*>(raw + 2);
+        auto*       data_begin = reinterpret_cast<char*>(raw + 4);
+        deref_str.assign(data_begin, data_begin + num_chars);
+        
+        page_idx++;
+        if(page_idx >= col.pages.size()) {
+            return deref_str;
+        }
+
+        raw = col.pages[page_idx]->data;
+        num_rows = *reinterpret_cast<uint16_t*>(raw);
+
+        while (num_rows == 0xfffe) {
+            num_chars  = *reinterpret_cast<uint16_t*>(raw + 2);
+            data_begin = reinterpret_cast<char*>(raw + 4);
+
+            deref_str.insert(deref_str.end(), data_begin, data_begin + num_chars);
+            
+            page_idx++;
+            if(page_idx >= col.pages.size()) {
+                break;
+            }
+
+            raw = col.pages[page_idx]->data;
+            num_rows = *reinterpret_cast<uint16_t*>(raw);
+        
+        }
+
+
+    } else { // normal string
+        auto offset_idx = ref.get_offset();
+        auto  num_non_null = *reinterpret_cast<uint16_t*>(raw + 2);
+        auto* offset_begin = reinterpret_cast<uint16_t*>(raw + 4);
+        auto* data_begin   = reinterpret_cast<char*>(raw + 4 + num_non_null * 2);
+                
+        auto* string_begin = (offset_idx == 0) ? data_begin : (data_begin + offset_begin[offset_idx - 1]);
+ 
+        auto offset = offset_begin[offset_idx];
+        deref_str.assign(string_begin, data_begin + offset);
+    }
+
+    return deref_str;
+
+}
+
 ExecuteResult execute_scan(const Plan&               plan,
     const ScanNode&                                  scan,
     const std::vector<std::tuple<size_t, DataType>>& output_attrs) {

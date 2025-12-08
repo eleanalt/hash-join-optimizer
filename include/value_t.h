@@ -54,10 +54,10 @@ struct StrRef {
         ref |= (off_idx & OFFSET_MASK) << OFFSET_SHIFT;
      
     }
-    uint64_t get_table() const { return (ref >> TABLE_SHIFT) & TABLE_MASK; }
-    uint64_t get_column() const { return (ref >> COLUMN_SHIFT) & COLUMN_MASK; }
-    uint64_t get_page() const { return (ref >> PAGE_SHIFT) & PAGE_MASK; }
-    uint64_t get_offset() const { return (ref >> OFFSET_SHIFT) & OFFSET_MASK; }
+    size_t get_table() const { return (ref >> TABLE_SHIFT) & TABLE_MASK; }
+    size_t get_column() const { return (ref >> COLUMN_SHIFT) & COLUMN_MASK; }
+    size_t get_page() const { return (ref >> PAGE_SHIFT) & PAGE_MASK; }
+    size_t get_offset() const { return (ref >> OFFSET_SHIFT) & OFFSET_MASK; }
     
     bool is_long() const { return ref & LONGSTR_BIT; }
 
