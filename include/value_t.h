@@ -1,4 +1,6 @@
 #include <cstdint>
+#include <stdexcept>
+#include <string.h>
 
 namespace Contest {
 
@@ -11,9 +13,9 @@ struct StrRef {
 
     static constexpr int TABLE_LEN  = 10;
     static constexpr int COLUMN_LEN = 10;
-    static constexpr int PAGE_LEN   = 16;
+    static constexpr int PAGE_LEN   = 18;
     static constexpr int OFFSET_LEN   = 16;
-    static constexpr int PADDING = 9;   // 9 least significant padding bits 
+    static constexpr int PADDING = 7;   // 7 least significant padding bits 
 
 
     static constexpr int TABLE_SHIFT  = PADDING + OFFSET_LEN + PAGE_LEN + COLUMN_LEN;
@@ -30,6 +32,19 @@ struct StrRef {
     StrRef() = default;
 
     StrRef(bool is_long,uint64_t table,uint64_t col, uint64_t page, uint64_t off_idx) {
+
+        if(table > TABLE_MASK)
+            throw std::out_of_range("StrRef table overflow: " + std::to_string(table) + 
+                                    " > " + std::to_string(TABLE_MASK));
+        if(col > COLUMN_MASK)
+            throw std::out_of_range("StrRef column overflow: " + std::to_string(col) + 
+                                    " > " + std::to_string(COLUMN_MASK));
+        if(page > PAGE_MASK)
+            throw std::out_of_range("StrRef page overflow: " + std::to_string(page) + 
+                                    " > " + std::to_string(PAGE_MASK));
+        if(off_idx > OFFSET_MASK)
+            throw std::out_of_range("StrRef offset overflow: " + std::to_string(off_idx) + 
+                                    " > " + std::to_string(OFFSET_MASK));
         
         if(is_long) ref |= LONGSTR_BIT;
 
@@ -45,7 +60,20 @@ struct StrRef {
     }
 
     void encode(bool is_long=false,uint64_t table=0,uint64_t col=0, uint64_t page=0, uint64_t off_idx=0) {
-  
+
+        if(table > TABLE_MASK)
+            throw std::out_of_range("StrRef table overflow: " + std::to_string(table) + 
+                                    " > " + std::to_string(TABLE_MASK));
+        if(col > COLUMN_MASK)
+            throw std::out_of_range("StrRef column overflow: " + std::to_string(col) + 
+                                    " > " + std::to_string(COLUMN_MASK));
+        if(page > PAGE_MASK)
+            throw std::out_of_range("StrRef page overflow: " + std::to_string(page) + 
+                                    " > " + std::to_string(PAGE_MASK));
+        if(off_idx > OFFSET_MASK)
+            throw std::out_of_range("StrRef offset overflow: " + std::to_string(off_idx) + 
+                                    " > " + std::to_string(OFFSET_MASK));
+        
         if(is_long) ref |= LONGSTR_BIT;
 
         ref |= (table & TABLE_MASK) << TABLE_SHIFT;

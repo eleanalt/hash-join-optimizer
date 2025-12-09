@@ -23,16 +23,22 @@ struct JoinAlgorithm {
     template <class T>
     auto run() {
         namespace views = ranges::views;
+
+
         //Using generic hash table aliased in hash_config.h
         GenericHash<uint32_t, std::vector<size_t>> hash_table;
 
+        // Determine build and probe sides
         ExecuteResult& build_side = build_left ? left : right;
         ExecuteResult& probe_side = build_left ? right : left;
 
         size_t build_col = build_left ? left_col : right_col;
         size_t probe_col = build_left ? right_col : left_col;
 
+            // Insert build side join keys in hash table
             for (auto&& [idx, record]: build_side | views::enumerate) {
+
+                if(record[build_col].is_null()) continue;
                 if(!record[build_col].is_int32()) throw std::runtime_error("Join key isn't of type int32_t");
 
                 uint32_t key = record[build_col].get_int32();
@@ -45,24 +51,43 @@ struct JoinAlgorithm {
 
             }
 
+            // Scan probe side for keys in hash table
             for (auto& probe_record: probe_side) {
+
+                if(probe_record[probe_col].is_null()) continue;
+                if(!probe_record[probe_col].is_int32()) throw std::runtime_error("Join key isn't of type int32_t");
+
                 uint32_t key = probe_record[probe_col].get_int32();
 
                     if (hash_table.contains(key)) {
                         auto& indices = hash_table[key];
-
-                        for (auto build_idx: indices) {
+                        
+                        // Create output records for each build side row
+                        for (auto build_idx: indices) { 
                             auto&             build_record = build_side[build_idx];
                             std::vector<value_t> new_record;
                             new_record.reserve(output_attrs.size());
 
+                            // Iterate over output columns 
                             for (auto [col_idx, _]: output_attrs) {
-                                if (col_idx < build_record.size()) {
-                                    new_record.emplace_back(build_record[col_idx]);
+                                value_t val;
+                                
+                                // Get value for current output column (left row + right row)
+                                if (build_left) {
+                                    if (col_idx < left[0].size()) {
+                                        val = build_record[col_idx];
+                                    } else {
+                                        val = probe_record[col_idx - left[0].size()];
+                                    }
                                 } else {
-                                    new_record.emplace_back(
-                                    probe_record[col_idx - build_record.size()]);
+                                    if (col_idx < left[0].size()) {
+                                        val = probe_record[col_idx];
+                                    } else {
+                                        val = build_record[col_idx - left[0].size()];
+                                    }
                                 }
+                                
+                                new_record.emplace_back(val);
                             }
                             results.emplace_back(std::move(new_record));
                         }
@@ -117,17 +142,19 @@ bool get_bitmap(const uint8_t* bitmap, uint16_t idx) {
     return bitmap[byte_idx] & (1u << bit);
 }
 
-std::vector<std::vector<value_t>> copy_scan(const ColumnarTable& table, size_t table_id,
+// Returns fully materialized value_t row table
+ExecuteResult copy_scan(const ColumnarTable& table, size_t table_id,
     const std::vector<std::tuple<size_t, DataType>>& output_attrs) {
     
     namespace views = ranges::views;
 
-    std::vector<std::vector<value_t>> results(table.num_rows, std::vector<value_t>(output_attrs.size(),value_t{}) );
+    ExecuteResult results(table.num_rows, std::vector<value_t>(output_attrs.size(),value_t{}) );
     std::vector<DataType>          types(table.columns.size());
 
     auto task = [&](size_t begin, size_t end) {
         size_t col_pap = 0;
 
+        // Iterate over output columns to materialize
         for (size_t column_idx = begin; column_idx < end; ++column_idx) {
 
             size_t in_col_idx = std::get<0>(output_attrs[column_idx]);
@@ -135,6 +162,7 @@ std::vector<std::vector<value_t>> copy_scan(const ColumnarTable& table, size_t t
             types[in_col_idx] = column.type;
             size_t row_idx = 0;
 
+            // Iterate over pages in column
             for (size_t page_idx = 0; page_idx < column.pages.size(); ++page_idx) {
                 auto* page = column.pages[page_idx]->data;
 
@@ -148,6 +176,7 @@ std::vector<std::vector<value_t>> copy_scan(const ColumnarTable& table, size_t t
 
                     uint16_t data_idx = 0;
 
+                    // Materialize INT32 values
                     for (uint16_t i = 0; i < num_rows; ++i) {
                         if (get_bitmap(bitmap, i)) {
                             auto value = data_begin[data_idx++];
@@ -165,7 +194,8 @@ std::vector<std::vector<value_t>> copy_scan(const ColumnarTable& table, size_t t
                 case DataType::VARCHAR: {
                     auto num_rows = *reinterpret_cast<uint16_t*>(page);
 
-                    if (num_rows == 0xffff) { //long string
+                    if (num_rows == 0xffff) {
+                        // Handle long string
                         auto        num_chars  = *reinterpret_cast<uint16_t*>(page + 2);
                         auto*       data_begin = reinterpret_cast<char*>(page + 4);
                         std::string value{data_begin, data_begin + num_chars};
@@ -178,9 +208,10 @@ std::vector<std::vector<value_t>> copy_scan(const ColumnarTable& table, size_t t
                         results[row_idx++][column_idx].parse_strref(ref);
 
                     } else if (num_rows == 0xfffe) {
-                        continue; // ignore subsequent special pages
+                        continue;
 
                     } else {
+                        // Handle normal VARCHAR
                         auto  num_non_null = *reinterpret_cast<uint16_t*>(page + 2);
                         auto* offset_begin = reinterpret_cast<uint16_t*>(page + 4);
                         auto* data_begin   = reinterpret_cast<char*>(page + 4 + num_non_null * 2);
@@ -189,6 +220,7 @@ std::vector<std::vector<value_t>> copy_scan(const ColumnarTable& table, size_t t
                             reinterpret_cast<uint8_t*>(page + PAGE_SIZE - (num_rows + 7) / 8);
 
                         uint16_t data_idx = 0;
+                        // Create StrRef for each VARCHAR
                         for (uint16_t i = 0; i < num_rows; ++i) {
                             if (get_bitmap(bitmap, i)) {
 
@@ -210,6 +242,7 @@ std::vector<std::vector<value_t>> copy_scan(const ColumnarTable& table, size_t t
         }
     };
     filter_tp.run(task, output_attrs.size());
+
     return results;
 }
 
@@ -270,6 +303,32 @@ std::string deref_str_ref(StrRef ref,const std::vector<ColumnarTable>& inputs) {
 
 }
 
+std::vector<std::vector<Data>> value_to_variant(const ExecuteResult& rows,const std::vector<ColumnarTable>& inputs) {
+
+    std::vector<std::vector<Data>> result;
+    result.reserve(rows.size());
+
+    for(auto& row : rows) {
+        std::vector<Data> variant_row;
+        variant_row.reserve(row.size());
+        
+        for (auto& item : row) {
+            if (item.is_int32()) {
+                variant_row.emplace_back(item.get_int32());
+            } else if (item.is_strref()) {
+                variant_row.emplace_back(deref_str_ref(item.get_strref(),inputs) );
+            } else {
+                variant_row.emplace_back(std::monostate{});
+            }
+        }
+        result.emplace_back(std::move(variant_row));
+    }
+
+    return result;
+}
+
+
+
 ExecuteResult execute_scan(const Plan&               plan,
     const ScanNode&                                  scan,
     const std::vector<std::tuple<size_t, DataType>>& output_attrs) {
@@ -300,9 +359,13 @@ ColumnarTable execute(const Plan& plan, [[maybe_unused]] void* context) {
     auto ret_types  = plan.nodes[plan.root].output_attrs
                    | views::transform([](const auto& v) { return std::get<1>(v); })
                    | ranges::to<std::vector<DataType>>();
-
-    Table table{std::move(ret), std::move(ret_types)};
+    
+    auto variant_ret = value_to_variant(ret,plan.inputs);
+    Table table{std::move(variant_ret), std::move(ret_types)};
     return table.to_columnar();
+
+    
+
 }
 
 void* build_context() {
