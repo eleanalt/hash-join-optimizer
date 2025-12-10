@@ -142,6 +142,24 @@ bool get_bitmap(const uint8_t* bitmap, uint16_t idx) {
     return bitmap[byte_idx] & (1u << bit);
 }
 
+void set_bitmap(std::vector<uint8_t>& bitmap, uint16_t idx) {
+    while (bitmap.size() < idx / 8 + 1) {
+        bitmap.emplace_back(0);
+    }
+    auto byte_idx     = idx / 8;
+    auto bit          = idx % 8;
+    bitmap[byte_idx] |= (1u << bit);
+}
+
+void unset_bitmap(std::vector<uint8_t>& bitmap, uint16_t idx) {
+    while (bitmap.size() < idx / 8 + 1) {
+        bitmap.emplace_back(0);
+    }
+    auto byte_idx     = idx / 8;
+    auto bit          = idx % 8;
+    bitmap[byte_idx] &= ~(1u << bit);
+}
+
 // Returns fully materialized value_t row table
 ExecuteResult copy_scan(const ColumnarTable& table, size_t table_id,
     const std::vector<std::tuple<size_t, DataType>>& output_attrs) {
@@ -256,6 +274,7 @@ std::string deref_str_ref(StrRef ref,const std::vector<ColumnarTable>& inputs) {
     std::string deref_str;
 
     if(ref.is_long()) { // long string
+        // initial special page
         if(num_rows != 0xffff) throw std::runtime_error("Page doesn't refer to long string");     
 
         auto        num_chars  = *reinterpret_cast<uint16_t*>(raw + 2);
@@ -263,13 +282,14 @@ std::string deref_str_ref(StrRef ref,const std::vector<ColumnarTable>& inputs) {
         deref_str.assign(data_begin, data_begin + num_chars);
         
         page_idx++;
-        if(page_idx >= col.pages.size()) {
+        if(page_idx >= col.pages.size()) { // return if last page in pages vector of column
             return deref_str;
         }
 
         raw = col.pages[page_idx]->data;
         num_rows = *reinterpret_cast<uint16_t*>(raw);
 
+        // keep iterating over following special pages
         while (num_rows == 0xfffe) {
             num_chars  = *reinterpret_cast<uint16_t*>(raw + 2);
             data_begin = reinterpret_cast<char*>(raw + 4);
@@ -303,31 +323,148 @@ std::string deref_str_ref(StrRef ref,const std::vector<ColumnarTable>& inputs) {
 
 }
 
-std::vector<std::vector<Data>> value_to_variant(const ExecuteResult& rows,const std::vector<ColumnarTable>& inputs) {
+// Converts value_t row-store table to ColumnarTable
+ColumnarTable table_to_columnar(ExecuteResult& table, 
+    std::vector<DataType>&                     data_types,
+    const std::vector<ColumnarTable>&          inputs) {
+    
+    namespace views  = ranges::views;
+    ColumnarTable ret;
+    ret.num_rows = table.size();
 
-    std::vector<std::vector<Data>> result;
-    result.reserve(rows.size());
+    // Iterate over output columns
+    for (auto [col_idx, data_type]: data_types | views::enumerate) {
+    
+        ret.columns.emplace_back(data_type);
+        auto& column = ret.columns.back();
 
-    for(auto& row : rows) {
-        std::vector<Data> variant_row;
-        variant_row.reserve(row.size());
-        
-        for (auto& item : row) {
-            if (item.is_int32()) {
-                variant_row.emplace_back(item.get_int32());
-            } else if (item.is_strref()) {
-                variant_row.emplace_back(deref_str_ref(item.get_strref(),inputs) );
-            } else {
-                variant_row.emplace_back(std::monostate{});
+        switch (data_type) {
+        case DataType::INT32: {
+            uint16_t             num_rows = 0;
+            std::vector<int32_t> data;
+            std::vector<uint8_t> bitmap;
+            data.reserve(2048);
+            bitmap.reserve(256);
+            
+            // Creates page in current columnm, then saves and clears intermediate data
+            auto save_page = [&column, &num_rows, &data, &bitmap]() {
+                auto* page                             = column.new_page()->data;
+                *reinterpret_cast<uint16_t*>(page)     = num_rows;
+                *reinterpret_cast<uint16_t*>(page + 2) = static_cast<uint16_t>(data.size());
+                memcpy(page + 4, data.data(), data.size() * 4);
+                memcpy(page + PAGE_SIZE - bitmap.size(), bitmap.data(), bitmap.size());
+                num_rows = 0;
+                data.clear();
+                bitmap.clear();
+            };
+
+            // Iterate over rows of current column
+            for (auto& record: table) {
+                auto& value = record[col_idx];
+
+                    if (value.is_int32()) {
+                        // New data doesn't fit in page
+                        if (4 + (data.size() + 1) * 4 + (num_rows / 8 + 1) > PAGE_SIZE) {
+                            save_page();
+                        }
+                        set_bitmap(bitmap, num_rows);
+                        data.emplace_back(value.get_int32());
+                        ++num_rows;
+                    } else if (value.is_null()) {
+                        // New data doesn't fit in page
+                        if (4 + (data.size()) * 4 + (num_rows / 8 + 1) > PAGE_SIZE) {
+                            save_page();
+                        }
+                        unset_bitmap(bitmap, num_rows);
+                        ++num_rows;
+                    }
             }
+            if (num_rows != 0) {
+                save_page();
+            }
+            break;
         }
-        result.emplace_back(std::move(variant_row));
+        case DataType::VARCHAR: {
+            uint16_t              num_rows = 0;
+            std::vector<char>     data;
+            std::vector<uint16_t> offsets;
+            std::vector<uint8_t>  bitmap;
+
+            data.reserve(8192);
+            offsets.reserve(4096);
+            bitmap.reserve(512);
+
+            // Handles saving long string over many special pages as needed
+            auto save_long_string = [&column](std::string_view data) {
+                size_t offset     = 0;
+                auto   first_page = true;
+                while (offset < data.size()) {
+                    auto* page = column.new_page()->data;
+                    if (first_page) {
+                        *reinterpret_cast<uint16_t*>(page) = 0xffff;
+                        first_page                         = false;
+                    } else {
+                        *reinterpret_cast<uint16_t*>(page) = 0xfffe;
+                    }
+                    auto page_data_len = std::min(data.size() - offset, PAGE_SIZE - 4);
+                    *reinterpret_cast<uint16_t*>(page + 2) = page_data_len;
+                    memcpy(page + 4, data.data() + offset, page_data_len);
+                    offset += page_data_len;
+                }
+            };
+            // Handles saving normal strings in page
+            auto save_page = [&column, &num_rows, &data, &offsets, &bitmap]() {
+                auto* page                             = column.new_page()->data;
+                *reinterpret_cast<uint16_t*>(page)     = num_rows;
+                *reinterpret_cast<uint16_t*>(page + 2) = static_cast<uint16_t>(offsets.size());
+                memcpy(page + 4, offsets.data(), offsets.size() * 2);
+                memcpy(page + 4 + offsets.size() * 2, data.data(), data.size());
+                memcpy(page + PAGE_SIZE - bitmap.size(), bitmap.data(), bitmap.size());
+                num_rows = 0;
+                data.clear();
+                offsets.clear();
+                bitmap.clear();
+            };
+            for (auto& record: table) {
+                auto& value = record[col_idx];
+
+                if (value.is_strref()) { 
+                    std::string str_value = deref_str_ref(value.get_strref(),inputs);
+                    if (str_value.size() > PAGE_SIZE - 7) { // string doesn't fit in page
+                        if (num_rows > 0) {
+                            save_page();
+                        }
+                        save_long_string(str_value);
+                    } else {
+                        size_t page_size_after = 4 + (offsets.size() + 1) * 2 + (data.size() + str_value.size()) + (num_rows / 8 + 1);
+                        if ( page_size_after > PAGE_SIZE) { // string doesn't fit in page
+                            save_page();
+                        }
+                        set_bitmap(bitmap, num_rows);
+                        data.insert(data.end(), str_value.begin(), str_value.end());
+                        offsets.emplace_back(data.size());
+                        ++num_rows;
+                    }
+                } else if (value.is_null()) {
+                    size_t page_size_after = 4 + offsets.size() * 2 + data.size() + (num_rows / 8 + 1);
+                    if ( page_size_after > PAGE_SIZE) { // string doesn't fit in page
+                        save_page();
+                    }
+                    unset_bitmap(bitmap, num_rows);
+                    ++num_rows;
+                } else {
+                    throw std::runtime_error("not string or null");
+                }
+            }
+            if (num_rows != 0) {
+                save_page();
+            }
+            break;
+        }
+        }
     }
-
-    return result;
+    return ret;
 }
-
-
 
 ExecuteResult execute_scan(const Plan&               plan,
     const ScanNode&                                  scan,
@@ -360,9 +497,7 @@ ColumnarTable execute(const Plan& plan, [[maybe_unused]] void* context) {
                    | views::transform([](const auto& v) { return std::get<1>(v); })
                    | ranges::to<std::vector<DataType>>();
     
-    auto variant_ret = value_to_variant(ret,plan.inputs);
-    Table table{std::move(variant_ret), std::move(ret_types)};
-    return table.to_columnar();
+    return table_to_columnar(ret,ret_types,plan.inputs);
 
     
 
