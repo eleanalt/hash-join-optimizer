@@ -93,6 +93,8 @@ add_executable(build_database tests/build_database.cpp)
 add_executable(robinhood_tests ${SIGMODPC_SRC} tests/robinhood_tests.cpp)
 add_executable(cuckoo_tests ${SIGMODPC_SRC} tests/cuckoo_tests.cpp)
 add_executable(hopscotch_tests ${SIGMODPC_SRC} tests/hopscotch_tests.cpp)
+add_executable(valuet_tests tests/valuet_tests.cpp)
+
 
 
 # For all executables
@@ -105,7 +107,6 @@ endif()
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "Windows")
     add_executable(build_cache ${SIGMODPC_SRC} tests/read_sql.cpp)
     add_executable(fast ${SIGMODPC_SRC} tests/read_sql.cpp)
-
     target_link_libraries(build_cache PRIVATE re2 fmt range-v3 nlohmann_json::nlohmann_json sqlparser duckdb)
     target_compile_definitions(build_cache PRIVATE TEAMOPT_USE_DUCKDB TEAMOPT_BUILD_CACHE)
     target_link_libraries(fast PRIVATE re2 fmt range-v3 nlohmann_json::nlohmann_json sqlparser)
@@ -120,6 +121,7 @@ target_link_libraries(unit_tests PRIVATE re2 range-v3 fmt Catch2::Catch2WithMain
 target_link_libraries(robinhood_tests PRIVATE re2 range-v3 fmt Catch2::Catch2WithMain)
 target_link_libraries(cuckoo_tests PRIVATE re2 range-v3 fmt Catch2::Catch2WithMain)
 target_link_libraries(hopscotch_tests PRIVATE re2 range-v3 fmt Catch2::Catch2WithMain)
+target_link_libraries(valuet_tests PRIVATE re2 range-v3 fmt Catch2::Catch2WithMain)
 
 
 
@@ -128,9 +130,9 @@ target_include_directories(build_database PRIVATE include)
 target_include_directories(unit_tests PRIVATE include)
 target_include_directories(robinhood_tests PRIVATE include)
 target_include_directories(cuckoo_tests PRIVATE include)
-
-
 target_include_directories(hopscotch_tests PRIVATE include)
+target_include_directories(valuet_tests PRIVATE include)
+
 
 
 option(HASH_ALGO "Which hash algorithm to use" "std")
