@@ -26,6 +26,7 @@ jobs:
             robinhood_tests \
             cuckoo_tests \
             hopscotch_tests \
+            valuet_tests \
             -j$(nproc)
 
       - name: Run tests
@@ -34,6 +35,8 @@ jobs:
           ./build/robinhood_tests
           ./build/cuckoo_tests
           ./build/hopscotch_tests
+          ./build/valuet_tests
+          
 
       - name: Build fast executable
         run: |
