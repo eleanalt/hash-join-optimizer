@@ -93,7 +93,9 @@ add_executable(build_database tests/build_database.cpp)
 add_executable(robinhood_tests ${SIGMODPC_SRC} tests/robinhood_tests.cpp)
 add_executable(cuckoo_tests ${SIGMODPC_SRC} tests/cuckoo_tests.cpp)
 add_executable(hopscotch_tests ${SIGMODPC_SRC} tests/hopscotch_tests.cpp)
-add_executable(valuet_tests tests/valuet_tests.cpp)
+add_executable(valuet_tests ${SIGMODPC_SRC} tests/valuet_tests.cpp)
+add_executable(columnt_tests ${SIGMODPC_SRC} tests/columnt_tests.cpp)
+
 
 
 
@@ -122,6 +124,8 @@ target_link_libraries(robinhood_tests PRIVATE re2 range-v3 fmt Catch2::Catch2Wit
 target_link_libraries(cuckoo_tests PRIVATE re2 range-v3 fmt Catch2::Catch2WithMain)
 target_link_libraries(hopscotch_tests PRIVATE re2 range-v3 fmt Catch2::Catch2WithMain)
 target_link_libraries(valuet_tests PRIVATE re2 range-v3 fmt Catch2::Catch2WithMain)
+target_link_libraries(columnt_tests PRIVATE re2 range-v3 fmt Catch2::Catch2WithMain)
+
 
 
 
@@ -132,6 +136,8 @@ target_include_directories(robinhood_tests PRIVATE include)
 target_include_directories(cuckoo_tests PRIVATE include)
 target_include_directories(hopscotch_tests PRIVATE include)
 target_include_directories(valuet_tests PRIVATE include)
+target_include_directories(columnt_tests PRIVATE include)
+
 
 
 
