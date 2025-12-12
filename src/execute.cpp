@@ -6,6 +6,10 @@
 #include "base_std_hash.h"
 #include "value_t.h"
 
+#ifdef USE_UNCHAINED_HASH
+#include "unchained.h"
+#endif
+
 namespace Contest {
 
 using ExecuteResult = std::vector<std::vector<value_t>>;
@@ -24,16 +28,74 @@ struct JoinAlgorithm {
     auto run() {
         namespace views = ranges::views;
 
-
-        //Using generic hash table aliased in hash_config.h
-        GenericHash<uint32_t, std::vector<size_t>> hash_table;
-
         // Determine build and probe sides
         ExecuteResult& build_side = build_left ? left : right;
         ExecuteResult& probe_side = build_left ? right : left;
 
         size_t build_col = build_left ? left_col : right_col;
         size_t probe_col = build_left ? right_col : left_col;
+
+    #ifdef USE_UNCHAINED_HASH
+            UnchainedHash<uint32_t, size_t> hash_table;
+            hash_table.reserve(static_cast<uint32_t>(build_side.size()));
+            // Insert build side join keys in hash table
+            for (auto&& [idx, record]: build_side | views::enumerate) {
+
+                if(record[build_col].is_null()) continue;
+                if(!record[build_col].is_int32()) throw std::runtime_error("Join key isn't of type int32_t");
+
+                uint32_t key = record[build_col].get_int32();          
+                hash_table.build_insert(key, idx);
+
+            }
+            
+            hash_table.finalize_build();
+            // Scan probe side for keys in hash table
+            for (auto& probe_record: probe_side) {
+
+                if(probe_record[probe_col].is_null()) continue;
+                if(!probe_record[probe_col].is_int32()) throw std::runtime_error("Join key isn't of type int32_t");
+
+                uint32_t key = probe_record[probe_col].get_int32();
+
+                    hash_table.probe(key,[&](size_t build_idx) {
+                            
+                            // Create output records for each build side row
+                                auto&             build_record = build_side[build_idx];
+                                std::vector<value_t> new_record;
+                                new_record.reserve(output_attrs.size());
+
+                                // Iterate over output columns 
+                                for (auto [col_idx, _]: output_attrs) {
+                                    value_t val;
+                                    
+                                    // Get value for current output column (left row + right row)
+                                    if (build_left) {
+                                        if (col_idx < left[0].size()) {
+                                            val = build_record[col_idx];
+                                        } else {
+                                            val = probe_record[col_idx - left[0].size()];
+                                        }
+                                    } else {
+                                        if (col_idx < left[0].size()) {
+                                            val = probe_record[col_idx];
+                                        } else {
+                                            val = build_record[col_idx - left[0].size()];
+                                        }
+                                    }
+                                    
+                                    new_record.emplace_back(val);
+                                }
+                                results.emplace_back(std::move(new_record));
+            
+                    })
+            }
+
+    } 
+    #else
+
+            //Using generic hash table aliased in hash_config.h
+            GenericHash<uint32_t, std::vector<size_t>> hash_table;
 
             // Insert build side join keys in hash table
             for (auto&& [idx, record]: build_side | views::enumerate) {
@@ -95,6 +157,7 @@ struct JoinAlgorithm {
         }
 
     }
+    #endif
 };
 
 ExecuteResult execute_hash_join(const Plan&          plan,
@@ -506,7 +569,7 @@ ColumnarTable execute(const Plan& plan, [[maybe_unused]] void* context) {
 void* build_context() {
     return nullptr;
 }
-
+ 
 void destroy_context([[maybe_unused]] void* context) {}
 
-} // namespace Contest
+}// namespace Contest
