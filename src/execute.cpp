@@ -88,7 +88,7 @@ struct JoinAlgorithm {
                                 }
                                 results.emplace_back(std::move(new_record));
             
-                    })
+                    });
             }
 
     } 
