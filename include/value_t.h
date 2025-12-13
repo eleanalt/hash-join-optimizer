@@ -1,8 +1,8 @@
+#pragma once
 #include <cstdint>
 #include <stdexcept>
-#include <string.h>
+#include <string>
 
-namespace Contest {
 
 struct StrRef {
 
@@ -126,4 +126,3 @@ struct value_t {
 
 };
 
-}

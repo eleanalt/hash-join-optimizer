@@ -2,7 +2,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include "value_t.h"
 
-using namespace Contest;
 
 TEST_CASE("StrRef encoding/decoding", "[StrRef]") {
 

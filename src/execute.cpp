@@ -5,6 +5,7 @@
 #include "hash_config.h"
 #include "base_std_hash.h"
 #include "value_t.h"
+#include "column_t.h"
 
 #ifdef USE_UNCHAINED_HASH
 #include "unchained.h"
@@ -12,7 +13,8 @@
 
 namespace Contest {
 
-using ExecuteResult = std::vector<std::vector<value_t>>;
+//using ExecuteResult = std::vector<std::vector<value_t>>;
+using ExecuteResult = std::vector<column_t>;
 
 ExecuteResult execute_impl(const Plan& plan, size_t node_idx);
 
@@ -35,58 +37,63 @@ struct JoinAlgorithm {
         size_t build_col = build_left ? left_col : right_col;
         size_t probe_col = build_left ? right_col : left_col;
 
+        results.reserve(output_attrs.size());
+        for (auto [idx, dtype] : output_attrs) {
+            results.emplace_back(column_t(dtype));
+        }
+
     #ifdef USE_UNCHAINED_HASH
             UnchainedHash<uint32_t, size_t> hash_table;
-            hash_table.reserve(static_cast<uint32_t>(build_side.size()));
+            hash_table.reserve(static_cast<uint32_t>(build_side[0].rows_num));
+            
+            column_t& build_join_col = build_side[build_col];
+
             // Insert build side join keys in hash table
-            for (auto&& [idx, record]: build_side | views::enumerate) {
+            for (size_t row_idx = 0; row_idx < build_join_col.rows_num; row_idx++) {
 
-                if(record[build_col].is_null()) continue;
-                if(!record[build_col].is_int32()) throw std::runtime_error("Join key isn't of type int32_t");
+                if(build_join_col[row_idx].is_null() ) continue;
+                if(!build_join_col[row_idx].is_int32()) throw std::runtime_error("Join key isn't of type int32_t");
 
-                uint32_t key = record[build_col].get_int32();          
-                hash_table.build_insert(key, idx);
+                uint32_t key = build_join_col[row_idx].get_int32();
+                                  
+                hash_table.build_insert(key, row_idx);
 
             }
             
             hash_table.finalize_build();
             // Scan probe side for keys in hash table
-            for (auto& probe_record: probe_side) {
+             column_t& probe_join_col = probe_side[probe_col];
+            for (size_t row_idx = 0; row_idx < probe_join_col.rows_num; row_idx++) {
 
-                if(probe_record[probe_col].is_null()) continue;
-                if(!probe_record[probe_col].is_int32()) throw std::runtime_error("Join key isn't of type int32_t");
+                if(probe_join_col[row_idx].is_null() ) continue;
+                if(!probe_join_col[row_idx].is_int32()) throw std::runtime_error("Join key isn't of type int32_t");
 
-                uint32_t key = probe_record[probe_col].get_int32();
+                uint32_t key = probe_join_col[row_idx].get_int32();
 
                     hash_table.probe(key,[&](size_t build_idx) {
                             
-                            // Create output records for each build side row
-                                auto&             build_record = build_side[build_idx];
-                                std::vector<value_t> new_record;
-                                new_record.reserve(output_attrs.size());
-
-                                // Iterate over output columns 
-                                for (auto [col_idx, _]: output_attrs) {
-                                    value_t val;
-                                    
-                                    // Get value for current output column (left row + right row)
-                                    if (build_left) {
-                                        if (col_idx < left[0].size()) {
-                                            val = build_record[col_idx];
-                                        } else {
-                                            val = probe_record[col_idx - left[0].size()];
-                                        }
+                            // Iterate over output columns 
+                            size_t out_idx = 0;
+                            for (auto [col_idx, _]: output_attrs) {
+                                value_t val;
+                                
+                                // Get value for current output column (left row + right row)
+                                if (build_left) {
+                                    if (col_idx < left.size()) {
+                                        val = build_side[col_idx][build_idx];
                                     } else {
-                                        if (col_idx < left[0].size()) {
-                                            val = probe_record[col_idx];
-                                        } else {
-                                            val = build_record[col_idx - left[0].size()];
-                                        }
+                                        val = probe_side[col_idx - left.size()][row_idx];
                                     }
-                                    
-                                    new_record.emplace_back(val);
+                                } else {
+                                    if (col_idx < left.size()) {
+                                        val = probe_side[col_idx][row_idx];
+                                    } else {
+                                        val = build_side[col_idx - left.size()][build_idx];
+                                    }
                                 }
-                                results.emplace_back(std::move(new_record));
+                                // append value to current output column
+                                results[out_idx++].append_row(val);
+                            }
             
                     });
             }
@@ -98,60 +105,61 @@ struct JoinAlgorithm {
             GenericHash<uint32_t, std::vector<size_t>> hash_table;
 
             // Insert build side join keys in hash table
-            for (auto&& [idx, record]: build_side | views::enumerate) {
+            column_t& build_join_col = build_side[build_col];
+             
+            for (size_t row_idx = 0; row_idx < build_join_col.rows_num; row_idx++) {
 
-                if(record[build_col].is_null()) continue;
-                if(!record[build_col].is_int32()) throw std::runtime_error("Join key isn't of type int32_t");
+                if(build_join_col[row_idx].is_null() ) continue;
+                if(!build_join_col[row_idx].is_int32()) throw std::runtime_error("Join key isn't of type int32_t");
 
-                uint32_t key = record[build_col].get_int32();
+                uint32_t key = build_join_col[row_idx].get_int32();
                           
                 if (!hash_table.contains(key)) {
-                    hash_table.emplace(key, std::vector<size_t>(1, idx));
+                    hash_table.emplace(key, std::vector<size_t>(1, row_idx));
                 } else {
-                    hash_table[key].push_back(idx);
+                    hash_table[key].push_back(row_idx);
                 }
 
             }
 
             // Scan probe side for keys in hash table
-            for (auto& probe_record: probe_side) {
+            column_t& probe_join_col = probe_side[probe_col];
+            for (size_t row_idx = 0; row_idx < probe_join_col.rows_num; row_idx++) {
 
-                if(probe_record[probe_col].is_null()) continue;
-                if(!probe_record[probe_col].is_int32()) throw std::runtime_error("Join key isn't of type int32_t");
+                if(probe_join_col[row_idx].is_null() ) continue;
+                if(!probe_join_col[row_idx].is_int32()) throw std::runtime_error("Join key isn't of type int32_t");
 
-                uint32_t key = probe_record[probe_col].get_int32();
+                uint32_t key = probe_join_col[row_idx].get_int32();
 
+                    // Probe row matches with build rows
                     if (hash_table.contains(key)) {
                         auto& indices = hash_table[key];
                         
-                        // Create output records for each build side row
+                        // For all matching build side rows
                         for (auto build_idx: indices) { 
-                            auto&             build_record = build_side[build_idx];
-                            std::vector<value_t> new_record;
-                            new_record.reserve(output_attrs.size());
 
                             // Iterate over output columns 
+                            size_t out_idx = 0;
                             for (auto [col_idx, _]: output_attrs) {
                                 value_t val;
                                 
                                 // Get value for current output column (left row + right row)
                                 if (build_left) {
-                                    if (col_idx < left[0].size()) {
-                                        val = build_record[col_idx];
+                                    if (col_idx < left.size()) {
+                                        val = build_side[col_idx][build_idx];
                                     } else {
-                                        val = probe_record[col_idx - left[0].size()];
+                                        val = probe_side[col_idx - left.size()][row_idx];
                                     }
                                 } else {
-                                    if (col_idx < left[0].size()) {
-                                        val = probe_record[col_idx];
+                                    if (col_idx < left.size()) {
+                                        val = probe_side[col_idx][row_idx];
                                     } else {
-                                        val = build_record[col_idx - left[0].size()];
+                                        val = build_side[col_idx - left.size()][build_idx];
                                     }
                                 }
                                 
-                                new_record.emplace_back(val);
+                                results[out_idx++].append_row(val);
                             }
-                            results.emplace_back(std::move(new_record));
                         }
                     }
         }
@@ -171,7 +179,7 @@ ExecuteResult execute_hash_join(const Plan&          plan,
     auto&                          right_types = right_node.output_attrs;
     auto                           left        = execute_impl(plan, left_idx);
     auto                           right       = execute_impl(plan, right_idx);
-    std::vector<std::vector<value_t>> results;
+    std::vector<column_t> results;
 
     JoinAlgorithm join_algorithm{.build_left = join.build_left,
         .left                                = left,
@@ -229,19 +237,20 @@ ExecuteResult copy_scan(const ColumnarTable& table, size_t table_id,
     
     namespace views = ranges::views;
 
-    ExecuteResult results(table.num_rows, std::vector<value_t>(output_attrs.size(),value_t{}) );
-    std::vector<DataType>          types(table.columns.size());
+    //Initialize output columns
+    ExecuteResult results;
+    results.reserve(output_attrs.size());
+    for (auto [idx, dtype] : output_attrs) {
+        results.emplace_back(column_t(dtype));
+    }
 
     auto task = [&](size_t begin, size_t end) {
-        size_t col_pap = 0;
 
         // Iterate over output columns to materialize
         for (size_t column_idx = begin; column_idx < end; ++column_idx) {
 
             size_t in_col_idx = std::get<0>(output_attrs[column_idx]);
             auto& column = table.columns[in_col_idx];
-            types[in_col_idx] = column.type;
-            size_t row_idx = 0;
 
             // Iterate over pages in column
             for (size_t page_idx = 0; page_idx < column.pages.size(); ++page_idx) {
@@ -261,12 +270,13 @@ ExecuteResult copy_scan(const ColumnarTable& table, size_t table_id,
                     for (uint16_t i = 0; i < num_rows; ++i) {
                         if (get_bitmap(bitmap, i)) {
                             auto value = data_begin[data_idx++];
-                            if (row_idx >= table.num_rows) {
-                                throw std::runtime_error("row_idx");
-                            }
-                            results[row_idx++][column_idx].parse_int32(value);
+
+                            value_t encoded_value;
+                            encoded_value.parse_int32(value);
+                            results[column_idx].append_row(encoded_value);
                         } else {
-                            ++row_idx;
+                            results[column_idx].append_row(value_t{});
+
                         }
                     }
                     break;
@@ -281,12 +291,10 @@ ExecuteResult copy_scan(const ColumnarTable& table, size_t table_id,
                         auto*       data_begin = reinterpret_cast<char*>(page + 4);
                         std::string value{data_begin, data_begin + num_chars};
 
-                        if (row_idx >= table.num_rows) {
-                            throw std::runtime_error("row_idx");
-                        }
-                        
                         StrRef ref(true,table_id,in_col_idx,page_idx,0);
-                        results[row_idx++][column_idx].parse_strref(ref);
+                        value_t encoded_value;
+                        encoded_value.parse_strref(ref);
+                        results[column_idx].append_row(encoded_value);
 
                     } else if (num_rows == 0xfffe) {
                         continue;
@@ -305,14 +313,12 @@ ExecuteResult copy_scan(const ColumnarTable& table, size_t table_id,
                         for (uint16_t i = 0; i < num_rows; ++i) {
                             if (get_bitmap(bitmap, i)) {
 
-                                if (row_idx >= table.num_rows) {
-                                    throw std::runtime_error("row_idx");
-                                }
-
                                 StrRef ref(false,table_id,in_col_idx,page_idx,data_idx++);
-                                results[row_idx++][column_idx].parse_strref(ref);
+                                value_t encoded_value;
+                                encoded_value.parse_strref(ref);
+                                results[column_idx].append_row(encoded_value);
                             } else {
-                                ++row_idx;
+                                results[column_idx].append_row(value_t{});
                             }
                         }
                     }
@@ -386,20 +392,21 @@ std::string deref_str_ref(StrRef ref,const std::vector<ColumnarTable>& inputs) {
 
 }
 
-// Converts value_t row-store table to ColumnarTable
+// Converts value_t column-store table to ColumnarTable
 ColumnarTable table_to_columnar(ExecuteResult& table, 
     std::vector<DataType>&                     data_types,
     const std::vector<ColumnarTable>&          inputs) {
     
     namespace views  = ranges::views;
     ColumnarTable ret;
-    ret.num_rows = table.size();
+    ret.num_rows = table.empty() ? 0 : table[0].rows_num;
 
     // Iterate over output columns
     for (auto [col_idx, data_type]: data_types | views::enumerate) {
     
         ret.columns.emplace_back(data_type);
         auto& column = ret.columns.back();
+        column_t& in_column = table[col_idx];
 
         switch (data_type) {
         case DataType::INT32: {
@@ -422,8 +429,8 @@ ColumnarTable table_to_columnar(ExecuteResult& table,
             };
 
             // Iterate over rows of current column
-            for (auto& record: table) {
-                auto& value = record[col_idx];
+            for (size_t row_idx = 0; row_idx < in_column.rows_num; row_idx++) {
+                auto& value = in_column[row_idx];
 
                     if (value.is_int32()) {
                         // New data doesn't fit in page
@@ -432,16 +439,16 @@ ColumnarTable table_to_columnar(ExecuteResult& table,
                         }
                         set_bitmap(bitmap, num_rows);
                         data.emplace_back(value.get_int32());
-                        ++num_rows;
                     } else if (value.is_null()) {
                         // New data doesn't fit in page
                         if (4 + (data.size()) * 4 + (num_rows / 8 + 1) > PAGE_SIZE) {
                             save_page();
                         }
                         unset_bitmap(bitmap, num_rows);
-                        ++num_rows;
                     }
+                    ++num_rows;
             }
+
             if (num_rows != 0) {
                 save_page();
             }
@@ -488,8 +495,9 @@ ColumnarTable table_to_columnar(ExecuteResult& table,
                 offsets.clear();
                 bitmap.clear();
             };
-            for (auto& record: table) {
-                auto& value = record[col_idx];
+
+            for (size_t row_idx = 0; row_idx < in_column.rows_num; row_idx++) {
+                auto& value = in_column[row_idx];
 
                 if (value.is_strref()) { 
                     std::string str_value = deref_str_ref(value.get_strref(),inputs);
@@ -561,8 +569,6 @@ ColumnarTable execute(const Plan& plan, [[maybe_unused]] void* context) {
                    | ranges::to<std::vector<DataType>>();
     
     return table_to_columnar(ret,ret_types,plan.inputs);
-
-    
 
 }
 
