@@ -229,6 +229,11 @@ To maintain efficiency and prevent long displacement cycles, we selected a **max
 ### Hopscotch Hashing
 Our Hopscotch Hashing implementation uses **`std::hash` with a Murmur3-inspired finalizer** to distribute keys uniformly. Each bucket maintains a **bitmap representing a fixed-size neighborhood (`H = 32`)**, allowing keys to be moved within this neighborhood to resolve collisions efficiently. The neighborhood size makes the most of **cache locality** while remaining within the **32-bit bitmap limit**, which allows fast bitwise operations for checking and accessing occupancy. We selected a **practical load factor of 0.9**, which keeps most insertions local and ensures O(1) lookups while maintaining high cache efficiency.
 
+
+### Unchained Hashing
+Both CRC32 and Fibonacci hashing were experimentally used.
+In the software implementation, CRC32 was much slower to compute, which made the hash join slower overall.
+Therefore, Fibonacci hashing was chosen as the final hash function.
 ## Performance (Hash Table Only)
 
 Below are the execution times measured during benchmarking:
@@ -239,5 +244,9 @@ Below are the execution times measured during benchmarking:
 | **Robinhood**      | 333k ms   |
 | **Hopscotch**      | 343k ms   |
 | **Cuckoo**         | 330k ms   |
+| **Unchained**      | 240k ms   |
+
+
+
 
 
