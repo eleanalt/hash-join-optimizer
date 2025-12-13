@@ -73,13 +73,14 @@ struct JoinAlgorithm {
                     hash_table.probe(key,[&](size_t build_idx) {
                             
                             // Iterate over output columns 
+                            size_t out_idx = 0;
                             for (auto [col_idx, _]: output_attrs) {
                                 value_t val;
                                 
                                 // Get value for current output column (left row + right row)
                                 if (build_left) {
                                     if (col_idx < left.size()) {
-                                        val = build_side[col_idx][row_idx];
+                                        val = build_side[col_idx][build_idx];
                                     } else {
                                         val = probe_side[col_idx - left.size()][row_idx];
                                     }
@@ -87,11 +88,11 @@ struct JoinAlgorithm {
                                     if (col_idx < left.size()) {
                                         val = probe_side[col_idx][row_idx];
                                     } else {
-                                        val = build_side[col_idx - left.size()][row_idx];
+                                        val = build_side[col_idx - left.size()][build_idx];
                                     }
                                 }
                                 // append value to current output column
-                                results[col_idx].append_row(val);
+                                results[out_idx++].append_row(val);
                             }
             
                     });
@@ -138,13 +139,14 @@ struct JoinAlgorithm {
                         for (auto build_idx: indices) { 
 
                             // Iterate over output columns 
+                            size_t out_idx = 0;
                             for (auto [col_idx, _]: output_attrs) {
                                 value_t val;
                                 
                                 // Get value for current output column (left row + right row)
                                 if (build_left) {
                                     if (col_idx < left.size()) {
-                                        val = build_side[col_idx][row_idx];
+                                        val = build_side[col_idx][build_idx];
                                     } else {
                                         val = probe_side[col_idx - left.size()][row_idx];
                                     }
@@ -152,11 +154,11 @@ struct JoinAlgorithm {
                                     if (col_idx < left.size()) {
                                         val = probe_side[col_idx][row_idx];
                                     } else {
-                                        val = build_side[col_idx - left.size()][row_idx];
+                                        val = build_side[col_idx - left.size()][build_idx];
                                     }
                                 }
                                 
-                                results[col_idx].append_row(val);
+                                results[out_idx++].append_row(val);
                             }
                         }
                     }
@@ -390,20 +392,21 @@ std::string deref_str_ref(StrRef ref,const std::vector<ColumnarTable>& inputs) {
 
 }
 
-// Converts value_t row-store table to ColumnarTable
+// Converts value_t column-store table to ColumnarTable
 ColumnarTable table_to_columnar(ExecuteResult& table, 
     std::vector<DataType>&                     data_types,
     const std::vector<ColumnarTable>&          inputs) {
     
     namespace views  = ranges::views;
     ColumnarTable ret;
-    ret.num_rows = table.size();
+    ret.num_rows = table.empty() ? 0 : table[0].rows_num;
 
     // Iterate over output columns
     for (auto [col_idx, data_type]: data_types | views::enumerate) {
     
         ret.columns.emplace_back(data_type);
         auto& column = ret.columns.back();
+        column_t& in_column = table[col_idx];
 
         switch (data_type) {
         case DataType::INT32: {
@@ -426,8 +429,8 @@ ColumnarTable table_to_columnar(ExecuteResult& table,
             };
 
             // Iterate over rows of current column
-            for (auto& record: table) {
-                auto& value = record[col_idx];
+            for (size_t row_idx = 0; row_idx < in_column.rows_num; row_idx++) {
+                auto& value = in_column[row_idx];
 
                     if (value.is_int32()) {
                         // New data doesn't fit in page
@@ -436,16 +439,16 @@ ColumnarTable table_to_columnar(ExecuteResult& table,
                         }
                         set_bitmap(bitmap, num_rows);
                         data.emplace_back(value.get_int32());
-                        ++num_rows;
                     } else if (value.is_null()) {
                         // New data doesn't fit in page
                         if (4 + (data.size()) * 4 + (num_rows / 8 + 1) > PAGE_SIZE) {
                             save_page();
                         }
                         unset_bitmap(bitmap, num_rows);
-                        ++num_rows;
                     }
+                    ++num_rows;
             }
+
             if (num_rows != 0) {
                 save_page();
             }
@@ -492,8 +495,9 @@ ColumnarTable table_to_columnar(ExecuteResult& table,
                 offsets.clear();
                 bitmap.clear();
             };
-            for (auto& record: table) {
-                auto& value = record[col_idx];
+
+            for (size_t row_idx = 0; row_idx < in_column.rows_num; row_idx++) {
+                auto& value = in_column[row_idx];
 
                 if (value.is_strref()) { 
                     std::string str_value = deref_str_ref(value.get_strref(),inputs);
@@ -565,8 +569,6 @@ ColumnarTable execute(const Plan& plan, [[maybe_unused]] void* context) {
                    | ranges::to<std::vector<DataType>>();
     
     return table_to_columnar(ret,ret_types,plan.inputs);
-
-    
 
 }
 

@@ -1,6 +1,7 @@
+#pragma once
 #include <cstdint>
 #include <stdexcept>
-#include <string.h>
+#include <string>
 
 
 struct StrRef {
