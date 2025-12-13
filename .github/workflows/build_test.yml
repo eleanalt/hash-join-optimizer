@@ -19,26 +19,15 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -Wno-dev
 
-      - name: Build the test binaries
+      - name: Build fast + tests
         run: |
-          cmake --build build --target \
-            unit_tests \
-            robinhood_tests \
-            cuckoo_tests \
-            hopscotch_tests \
-            valuet_tests \
+          cmake --build build \
+            --target fast \
             -j$(nproc)
 
-      - name: Run tests
+      - name: Run tests (CTest)
         run: |
-          ./build/unit_tests
-          ./build/robinhood_tests
-          ./build/cuckoo_tests
-          ./build/hopscotch_tests
-          ./build/valuet_tests
-          
+          cd build
+          ctest --output-on-failure
 
-      - name: Build fast executable
-        run: |
-          cmake --build build --target fast -j$(nproc)
 
