@@ -22,7 +22,7 @@ jobs:
       - name: Build fast + tests
         run: |
           cmake --build build \
-            --target fast \
+            --target fast all_tests \
             -j$(nproc)
 
       - name: Run tests (CTest)
