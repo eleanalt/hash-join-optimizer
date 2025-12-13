@@ -105,6 +105,15 @@ add_test(NAME hopscotch_tests COMMAND hopscotch_tests)
 add_test(NAME valuet_tests COMMAND valuet_tests)
 add_test(NAME columnt_tests COMMAND columnt_tests)
 
+add_custom_target(all_tests)
+add_dependencies(all_tests
+    unit_tests
+    robinhood_tests
+    cuckoo_tests
+    hopscotch_tests
+    valuet_tests
+    columnt_tests
+)
 
 
 # For all executables
