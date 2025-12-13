@@ -2,7 +2,6 @@
 #include <stdexcept>
 #include <string.h>
 
-namespace Contest {
 
 struct StrRef {
 
@@ -126,4 +125,3 @@ struct value_t {
 
 };
 
-}

@@ -40,6 +40,13 @@ struct column_t {
         return pages[page_idx]->data[page_offset];
     }
 
+    value_t& operator[](size_t row_idx) {
+        size_t page_idx = row_idx / COLUMN_PAGE_LEN;
+        size_t page_offset = row_idx % COLUMN_PAGE_LEN;
+
+        return pages[page_idx]->data[page_offset];    
+    }
+
     ~column_t() {
         for(auto* page : pages) {
             delete page;
