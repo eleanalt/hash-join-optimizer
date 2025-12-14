@@ -252,7 +252,7 @@ Below are the execution times measured after the implementation of late materili
 
 | Hash Implementation | Time (ms) |
 |--------------------|-----------|
-| **UnorderedMap (Base)** | 340k ms   |
+| **UnorderedMap (Base)** | 60k ms   |
 | **Robinhood**      | 54k ms   |
 | **Hopscotch**      | 50k ms   |
 | **Cuckoo**         | 58k ms   |
