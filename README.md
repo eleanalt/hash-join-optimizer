@@ -191,6 +191,17 @@ Our implementation of custom hash tables for Phase 1 was developed collaborative
 - **1115202100174 — Αλέξιος Σούλι**  
   Implemented **Robinhood Hashing** and the **emplace()** method for Hopscotch Hashing.
 
+# Phase 2 
+
+## Contributors
+Our implementation for phase 2 was developed collaboratively:
+
+- **1115202100089 — Ελεάνα Λύτη**  
+  Focused on **Unchained Hashing**.
+
+- **1115202100174 — Αλέξιος Σούλι**  
+  Focused on **Late Materialization** and **Joins in Column Store**
+  
 ## Selecting a Hashing Algorithm
 To compile with a specific hashing algorithm other than `std::unordered_map` run:
 
@@ -203,7 +214,8 @@ Replace `{algo}` with one of the following:
 
 - `robinhood` — Robinhood Hashing  
 - `cuckoo` — Cuckoo Hashing  
-- `hopscotch` — Hopscotch Hashing  
+- `hopscotch` — Hopscotch Hashing
+- `unchained` — Unchained Hashing  
 
 
 ## Unit Tests
@@ -212,7 +224,8 @@ Each hashing implementation includes its own test suite. You can build them with
 
 - `cmake --build build -- -j $(nproc) robinhood_tests`  
 - `cmake --build build -- -j $(nproc) cuckoo_tests`  
-- `cmake --build build -- -j $(nproc) hopscotch_tests`  
+- `cmake --build build -- -j $(nproc) hopscotch_tests`
+- `cmake --build build -- -j $(nproc) unchained_tests`
 
 ## Algorithm Notes
 
@@ -222,19 +235,21 @@ We use `std::hash` as the base hashing function and apply a **Murmur3 finalizer*
 Given Robinhood Hashing's ability to maintain efficient performance at high load factors (0.90+), we selected **0.9** as a practical and well-balanced target load factor.
 
 ### Cuckoo Hashing
-Our Cuckoo Hashing implementation uses **two independent hash functions** to assign each key to one of two possible positions in separate tables. Both hash functions start with `std::hash` as a base and then apply **custom bit-mixing routines** (shift and XOR operations) to improve randomness and reduce collisions. This ensures that each key has two independent candidate positions, enabling **constant-time lookups** by checking at most two locations.
+Our Cuckoo Hashing implementation uses **two independent hash functions** to assign each key to one of two possible positions in separate tables. Both hash functions start with `std::hash` as a base and then apply **custom bit-mixing routines** (shift and XOR operations) to improve randomness and reduce collisions. This ensures that each key has two independent candidate positions, enabling **constant-time lookups** by checking at most two locations. 
 
 To maintain efficiency and prevent long displacement cycles, we selected a **maximum load factor of 0.5**. When this threshold is exceeded, the table is **rehashed and doubled in size**, guaranteeing that insertions remain fast and lookups maintain O(1) performance.
 
 ### Hopscotch Hashing
 Our Hopscotch Hashing implementation uses **`std::hash` with a Murmur3-inspired finalizer** to distribute keys uniformly. Each bucket maintains a **bitmap representing a fixed-size neighborhood (`H = 32`)**, allowing keys to be moved within this neighborhood to resolve collisions efficiently. The neighborhood size makes the most of **cache locality** while remaining within the **32-bit bitmap limit**, which allows fast bitwise operations for checking and accessing occupancy. We selected a **practical load factor of 0.9**, which keeps most insertions local and ensures O(1) lookups while maintaining high cache efficiency.
 
-
 ### Unchained Hashing
-Both CRC32 and Fibonacci hashing were experimentally used.
-In the software implementation, CRC32 was much slower to compute, which made the hash join slower overall.
-Therefore, Fibonacci hashing was chosen as the final hash function.
-## Performance (Hash Table Only)
+The unchained hash table was implemented using a directory and a contiguous adjacency array to improve cache locality during hash joins.
+Both CRC32 and Fibonacci hashing were experimentally implemented.
+In the software-based implementation, CRC32 incurred substantially higher computation overhead, leading to worse overall hash join execution time.
+Consequently, Fibonacci hashing was chosen as the final hashing strategy.A lightweight 16-bit Bloom filter per directory entry is used to quickly reject non-matching keys and reduce unnecessary memory accesses.
+This design prioritizes simplicity, performance, and efficient in-memory execution.
+
+## Performance 
 
 Below are the execution times measured during benchmarking:
 
@@ -244,9 +259,15 @@ Below are the execution times measured during benchmarking:
 | **Robinhood**      | 333k ms   |
 | **Hopscotch**      | 343k ms   |
 | **Cuckoo**         | 330k ms   |
-| **Unchained**      | 240k ms   |
+| **Cuckoo**         | 240k ms   |
 
+Below are the execution times measured after the implementation of late materilization and joins in column store:
 
-
-
+| Hash Implementation | Time (ms) |
+|--------------------|-----------|
+| **UnorderedMap (Base)** | 60k ms   |
+| **Robinhood**      | 54k ms   |
+| **Hopscotch**      | 50k ms   |
+| **Cuckoo**         | 58k ms   |
+| **Unchained**      | 37k ms   |
 
