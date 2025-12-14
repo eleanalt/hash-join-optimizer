@@ -203,7 +203,8 @@ Replace `{algo}` with one of the following:
 
 - `robinhood` — Robinhood Hashing  
 - `cuckoo` — Cuckoo Hashing  
-- `hopscotch` — Hopscotch Hashing  
+- `hopscotch` — Hopscotch Hashing
+- `unchained` — Unchained Hashing  
 
 
 ## Unit Tests
@@ -212,7 +213,8 @@ Each hashing implementation includes its own test suite. You can build them with
 
 - `cmake --build build -- -j $(nproc) robinhood_tests`  
 - `cmake --build build -- -j $(nproc) cuckoo_tests`  
-- `cmake --build build -- -j $(nproc) hopscotch_tests`  
+- `cmake --build build -- -j $(nproc) hopscotch_tests`
+- `cmake --build build -- -j $(nproc) unchained_tests`
 
 ## Algorithm Notes
 
@@ -229,7 +231,12 @@ To maintain efficiency and prevent long displacement cycles, we selected a **max
 ### Hopscotch Hashing
 Our Hopscotch Hashing implementation uses **`std::hash` with a Murmur3-inspired finalizer** to distribute keys uniformly. Each bucket maintains a **bitmap representing a fixed-size neighborhood (`H = 32`)**, allowing keys to be moved within this neighborhood to resolve collisions efficiently. The neighborhood size makes the most of **cache locality** while remaining within the **32-bit bitmap limit**, which allows fast bitwise operations for checking and accessing occupancy. We selected a **practical load factor of 0.9**, which keeps most insertions local and ensures O(1) lookups while maintaining high cache efficiency.
 
-## Performance (Hash Table Only)
+### Unchained Hashing
+Both CRC32 and Fibonacci hashing were experimentally implemented.
+In the software-based implementation, CRC32 incurred substantially higher computation overhead, leading to worse overall hash join execution time.
+Consequently, Fibonacci hashing was chosen as the final hashing strategy.
+
+## Performance 
 
 Below are the execution times measured during benchmarking:
 
@@ -239,5 +246,15 @@ Below are the execution times measured during benchmarking:
 | **Robinhood**      | 333k ms   |
 | **Hopscotch**      | 343k ms   |
 | **Cuckoo**         | 330k ms   |
+| **Cuckoo**         | 240k ms   |
 
+Below are the execution times measured after the implementation of late materilization and joins in column store:
+
+| Hash Implementation | Time (ms) |
+|--------------------|-----------|
+| **UnorderedMap (Base)** | 340k ms   |
+| **Robinhood**      | 54k ms   |
+| **Hopscotch**      | 50k ms   |
+| **Cuckoo**         | 58k ms   |
+| **Unchained**      | 37k ms   |
 
