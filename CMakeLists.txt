@@ -95,6 +95,7 @@ add_executable(build_database tests/build_database.cpp)
 add_executable(robinhood_tests ${SIGMODPC_SRC} tests/robinhood_tests.cpp)
 add_executable(cuckoo_tests ${SIGMODPC_SRC} tests/cuckoo_tests.cpp)
 add_executable(hopscotch_tests ${SIGMODPC_SRC} tests/hopscotch_tests.cpp)
+add_executable(unchained_tests ${SIGMODPC_SRC} tests/unchained_tests.cpp)
 add_executable(valuet_tests ${SIGMODPC_SRC} tests/valuet_tests.cpp)
 add_executable(columnt_tests ${SIGMODPC_SRC} tests/columnt_tests.cpp)
 
@@ -102,6 +103,7 @@ add_test(NAME unit_tests COMMAND unit_tests)
 add_test(NAME robinhood_tests COMMAND robinhood_tests)
 add_test(NAME cuckoo_tests COMMAND cuckoo_tests)
 add_test(NAME hopscotch_tests COMMAND hopscotch_tests)
+add_test(NAME unchained_tests COMMAND unchained_tests)
 add_test(NAME valuet_tests COMMAND valuet_tests)
 add_test(NAME columnt_tests COMMAND columnt_tests)
 
@@ -111,6 +113,7 @@ add_dependencies(all_tests
     robinhood_tests
     cuckoo_tests
     hopscotch_tests
+    unchained_tests
     valuet_tests
     columnt_tests
 )
@@ -140,6 +143,7 @@ target_link_libraries(unit_tests PRIVATE re2 range-v3 fmt Catch2::Catch2WithMain
 target_link_libraries(robinhood_tests PRIVATE re2 range-v3 fmt Catch2::Catch2WithMain)
 target_link_libraries(cuckoo_tests PRIVATE re2 range-v3 fmt Catch2::Catch2WithMain)
 target_link_libraries(hopscotch_tests PRIVATE re2 range-v3 fmt Catch2::Catch2WithMain)
+target_link_libraries(unchained_tests PRIVATE re2 range-v3 fmt Catch2::Catch2WithMain)
 target_link_libraries(valuet_tests PRIVATE re2 range-v3 fmt Catch2::Catch2WithMain)
 target_link_libraries(columnt_tests PRIVATE re2 range-v3 fmt Catch2::Catch2WithMain)
 
@@ -152,6 +156,7 @@ target_include_directories(unit_tests PRIVATE include)
 target_include_directories(robinhood_tests PRIVATE include)
 target_include_directories(cuckoo_tests PRIVATE include)
 target_include_directories(hopscotch_tests PRIVATE include)
+target_include_directories(unchained_tests PRIVATE include)
 target_include_directories(valuet_tests PRIVATE include)
 target_include_directories(columnt_tests PRIVATE include)
 
