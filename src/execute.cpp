@@ -13,7 +13,6 @@
 
 namespace Contest {
 
-//using ExecuteResult = std::vector<std::vector<value_t>>;
 using ExecuteResult = std::vector<column_t>;
 
 ExecuteResult execute_impl(const Plan& plan, size_t node_idx);
@@ -231,7 +230,7 @@ void unset_bitmap(std::vector<uint8_t>& bitmap, uint16_t idx) {
     bitmap[byte_idx] &= ~(1u << bit);
 }
 
-// Returns fully materialized value_t row table
+// Returns a columnar table ExecuteResult of column_t's with value_t entries
 ExecuteResult copy_scan(const ColumnarTable& table, size_t table_id,
     const std::vector<std::tuple<size_t, DataType>>& output_attrs) {
     
@@ -392,7 +391,7 @@ std::string deref_str_ref(StrRef ref,const std::vector<ColumnarTable>& inputs) {
 
 }
 
-// Converts value_t column-store table to ColumnarTable
+// Converts value_t column-store table to ColumnarTable, fully materialized
 ColumnarTable table_to_columnar(ExecuteResult& table, 
     std::vector<DataType>&                     data_types,
     const std::vector<ColumnarTable>&          inputs) {
