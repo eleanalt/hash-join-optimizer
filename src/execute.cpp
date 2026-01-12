@@ -50,10 +50,10 @@ struct JoinAlgorithm {
             // Insert build side join keys in hash table
             for (size_t row_idx = 0; row_idx < build_join_col.rows_num; row_idx++) {
 
-                if(build_join_col[row_idx].is_null() ) continue;
-                if(!build_join_col[row_idx].is_int32()) throw std::runtime_error("Join key isn't of type int32_t");
+                if(build_join_col.get_row_value(row_idx).is_null() ) continue;
+                if(!build_join_col.get_row_value(row_idx).is_int32()) throw std::runtime_error("Join key isn't of type int32_t");
 
-                uint32_t key = build_join_col[row_idx].get_int32();
+                uint32_t key = build_join_col.get_row_value(row_idx).get_int32();
                                   
                 hash_table.build_insert(key, row_idx);
 
@@ -64,10 +64,10 @@ struct JoinAlgorithm {
              column_t& probe_join_col = probe_side[probe_col];
             for (size_t row_idx = 0; row_idx < probe_join_col.rows_num; row_idx++) {
 
-                if(probe_join_col[row_idx].is_null() ) continue;
-                if(!probe_join_col[row_idx].is_int32()) throw std::runtime_error("Join key isn't of type int32_t");
+                if(probe_join_col.get_row_value(row_idx).is_null() ) continue;
+                if(!probe_join_col.get_row_value(row_idx).is_int32()) throw std::runtime_error("Join key isn't of type int32_t");
 
-                uint32_t key = probe_join_col[row_idx].get_int32();
+                uint32_t key = probe_join_col.get_row_value(row_idx).get_int32();
 
                     hash_table.probe(key,[&](size_t build_idx) {
                             
@@ -108,10 +108,10 @@ struct JoinAlgorithm {
              
             for (size_t row_idx = 0; row_idx < build_join_col.rows_num; row_idx++) {
 
-                if(build_join_col[row_idx].is_null() ) continue;
-                if(!build_join_col[row_idx].is_int32()) throw std::runtime_error("Join key isn't of type int32_t");
+                if(build_join_col.get_row_value(row_idx).is_null() ) continue;
+                if(!build_join_col.get_row_value(row_idx).is_int32()) throw std::runtime_error("Join key isn't of type int32_t");
 
-                uint32_t key = build_join_col[row_idx].get_int32();
+                uint32_t key = build_join_col.get_row_value(row_idx).get_int32();
                           
                 if (!hash_table.contains(key)) {
                     hash_table.emplace(key, std::vector<size_t>(1, row_idx));
@@ -125,10 +125,10 @@ struct JoinAlgorithm {
             column_t& probe_join_col = probe_side[probe_col];
             for (size_t row_idx = 0; row_idx < probe_join_col.rows_num; row_idx++) {
 
-                if(probe_join_col[row_idx].is_null() ) continue;
-                if(!probe_join_col[row_idx].is_int32()) throw std::runtime_error("Join key isn't of type int32_t");
+                if(probe_join_col.get_row_value(row_idx).is_null() ) continue;
+                if(!probe_join_col.get_row_value(row_idx).is_int32()) throw std::runtime_error("Join key isn't of type int32_t");
 
-                uint32_t key = probe_join_col[row_idx].get_int32();
+                uint32_t key = probe_join_col.get_row_value(row_idx).get_int32();
 
                     // Probe row matches with build rows
                     if (hash_table.contains(key)) {
@@ -230,6 +230,19 @@ void unset_bitmap(std::vector<uint8_t>& bitmap, uint16_t idx) {
     bitmap[byte_idx] &= ~(1u << bit);
 }
 
+bool col_is_dense(const Column& column) {
+
+    for (size_t page_idx = 0; page_idx < column.pages.size(); ++page_idx) {
+        auto* page = column.pages[page_idx]->data;
+        auto  num_rows   = *reinterpret_cast<uint16_t*>(page);
+        auto non_null_rows = *reinterpret_cast<int16_t*>(page + 2);
+
+        if (num_rows != non_null_rows) return false;
+    }
+
+    return true;
+}
+
 // Returns a columnar table ExecuteResult of column_t's with value_t entries
 ExecuteResult copy_scan(const ColumnarTable& table, size_t table_id,
     const std::vector<std::tuple<size_t, DataType>>& output_attrs) {
@@ -250,6 +263,11 @@ ExecuteResult copy_scan(const ColumnarTable& table, size_t table_id,
 
             size_t in_col_idx = std::get<0>(output_attrs[column_idx]);
             auto& column = table.columns[in_col_idx];
+
+            if(column.type == DataType::INT32 && col_is_dense(column)) {
+                results[column_idx].use_input_col(&column,table.num_rows);
+                continue;
+            }
 
             // Iterate over pages in column
             for (size_t page_idx = 0; page_idx < column.pages.size(); ++page_idx) {
@@ -429,7 +447,7 @@ ColumnarTable table_to_columnar(ExecuteResult& table,
 
             // Iterate over rows of current column
             for (size_t row_idx = 0; row_idx < in_column.rows_num; row_idx++) {
-                auto& value = in_column[row_idx];
+                auto value = in_column[row_idx];
 
                     if (value.is_int32()) {
                         // New data doesn't fit in page
@@ -496,7 +514,7 @@ ColumnarTable table_to_columnar(ExecuteResult& table,
             };
 
             for (size_t row_idx = 0; row_idx < in_column.rows_num; row_idx++) {
-                auto& value = in_column[row_idx];
+                auto value = in_column[row_idx];
 
                 if (value.is_strref()) { 
                     std::string str_value = deref_str_ref(value.get_strref(),inputs);
