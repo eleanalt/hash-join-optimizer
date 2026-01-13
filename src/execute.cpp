@@ -6,6 +6,11 @@
 #include "base_std_hash.h"
 #include "value_t.h"
 #include "column_t.h"
+#include "column_merge.h"
+#include <atomic>
+#include "partitioned_directory_hash.h"
+#include "column_merge.h"
+#include <thread>
 
 #ifdef USE_UNCHAINED_HASH
 #include "unchained.h"
@@ -27,7 +32,7 @@ struct JoinAlgorithm {
 
     template <class T>
     auto run() {
-        namespace views = ranges::views;
+        using namespace Contest;
 
         // Determine build and probe sides
         ExecuteResult& build_side = build_left ? left : right;
@@ -36,135 +41,147 @@ struct JoinAlgorithm {
         size_t build_col = build_left ? left_col : right_col;
         size_t probe_col = build_left ? right_col : left_col;
 
+        // Prepare final output columns
         results.reserve(output_attrs.size());
         for (auto [idx, dtype] : output_attrs) {
             results.emplace_back(column_t(dtype));
         }
 
-    #ifdef USE_UNCHAINED_HASH
-            UnchainedHash<uint32_t, size_t> hash_table;
-            hash_table.reserve(static_cast<uint32_t>(build_side[0].rows_num));
-            
-            column_t& build_join_col = build_side[build_col];
+        // We implement "by the book" directory+tupleStorage build for INT32 join keys
+        const size_t num_threads = default_num_threads_env();
 
-            // Insert build side join keys in hash table
-            for (size_t row_idx = 0; row_idx < build_join_col.rows_num; row_idx++) {
-
-                if(build_join_col.get_row_value(row_idx).is_null() ) continue;
-                if(!build_join_col.get_row_value(row_idx).is_int32()) throw std::runtime_error("Join key isn't of type int32_t");
-
-                uint32_t key = build_join_col.get_row_value(row_idx).get_int32();
-                                  
-                hash_table.build_insert(key, row_idx);
-
-            }
-            
-            hash_table.finalize_build();
-            // Scan probe side for keys in hash table
-             column_t& probe_join_col = probe_side[probe_col];
-            for (size_t row_idx = 0; row_idx < probe_join_col.rows_num; row_idx++) {
-
-                if(probe_join_col.get_row_value(row_idx).is_null() ) continue;
-                if(!probe_join_col.get_row_value(row_idx).is_int32()) throw std::runtime_error("Join key isn't of type int32_t");
-
-                uint32_t key = probe_join_col.get_row_value(row_idx).get_int32();
-
-                    hash_table.probe(key,[&](size_t build_idx) {
-                            
-                            // Iterate over output columns 
-                            size_t out_idx = 0;
-                            for (auto [col_idx, _]: output_attrs) {
-                                value_t val;
-                                
-                                // Get value for current output column (left row + right row)
-                                if (build_left) {
-                                    if (col_idx < left.size()) {
-                                        val = build_side[col_idx][build_idx];
-                                    } else {
-                                        val = probe_side[col_idx - left.size()][row_idx];
-                                    }
-                                } else {
-                                    if (col_idx < left.size()) {
-                                        val = probe_side[col_idx][row_idx];
-                                    } else {
-                                        val = build_side[col_idx - left.size()][build_idx];
-                                    }
-                                }
-                                // append value to current output column
-                                results[out_idx++].append_row(val);
-                            }
-            
-                    });
-            }
-
-    } 
-    #else
-
-            //Using generic hash table aliased in hash_config.h
-            GenericHash<uint32_t, std::vector<size_t>> hash_table;
-
-            // Insert build side join keys in hash table
-            column_t& build_join_col = build_side[build_col];
-             
-            for (size_t row_idx = 0; row_idx < build_join_col.rows_num; row_idx++) {
-
-                if(build_join_col.get_row_value(row_idx).is_null() ) continue;
-                if(!build_join_col.get_row_value(row_idx).is_int32()) throw std::runtime_error("Join key isn't of type int32_t");
-
-                uint32_t key = build_join_col.get_row_value(row_idx).get_int32();
-                          
-                if (!hash_table.contains(key)) {
-                    hash_table.emplace(key, std::vector<size_t>(1, row_idx));
-                } else {
-                    hash_table[key].push_back(row_idx);
-                }
-
-            }
-
-            // Scan probe side for keys in hash table
-            column_t& probe_join_col = probe_side[probe_col];
-            for (size_t row_idx = 0; row_idx < probe_join_col.rows_num; row_idx++) {
-
-                if(probe_join_col.get_row_value(row_idx).is_null() ) continue;
-                if(!probe_join_col.get_row_value(row_idx).is_int32()) throw std::runtime_error("Join key isn't of type int32_t");
-
-                uint32_t key = probe_join_col.get_row_value(row_idx).get_int32();
-
-                    // Probe row matches with build rows
-                    if (hash_table.contains(key)) {
-                        auto& indices = hash_table[key];
-                        
-                        // For all matching build side rows
-                        for (auto build_idx: indices) { 
-
-                            // Iterate over output columns 
-                            size_t out_idx = 0;
-                            for (auto [col_idx, _]: output_attrs) {
-                                value_t val;
-                                
-                                // Get value for current output column (left row + right row)
-                                if (build_left) {
-                                    if (col_idx < left.size()) {
-                                        val = build_side[col_idx][build_idx];
-                                    } else {
-                                        val = probe_side[col_idx - left.size()][row_idx];
-                                    }
-                                } else {
-                                    if (col_idx < left.size()) {
-                                        val = probe_side[col_idx][row_idx];
-                                    } else {
-                                        val = build_side[col_idx - left.size()][build_idx];
-                                    }
-                                }
-                                
-                                results[out_idx++].append_row(val);
-                            }
-                        }
-                    }
+        static bool printed = false;
+        if (!printed) {
+            printed = true;
+            std::cerr << "[DIRJOIN] threads=" << num_threads << "\n";
         }
 
+        column_t& build_join_col = build_side[build_col];
+        column_t& probe_join_col = probe_side[probe_col];
+
+        // ---------- BUILD: partitions + directory(count/prefix/copy) ----------
+        PartitionedDirectoryHash index;
+
+        // directory_bits controls directory size (2^bits entries).
+        // 16 => 65536 entries, good baseline.
+        index.init(/*num_parts=*/num_threads, /*directory_bits=*/16);
+
+        // Minimal optional type (no <optional> to keep it simple)
+        struct OptU32 {
+            bool     has;
+            uint32_t v;
+            bool has_value() const { return has; }
+            uint32_t value() const { return v; }
+        };
+
+        index.build(build_join_col.rows_num, num_threads, [&](size_t row) -> OptU32 {
+            auto v = build_join_col.get_row_value(row);
+            if (v.is_null()) return {false, 0};
+            if (!v.is_int32()) throw std::runtime_error("Join key isn't of type int32_t");
+            return {true, static_cast<uint32_t>(v.get_int32())};
+        });
+
+        // ---------- PROBE: threaded probing with work stealing ----------
+        // Work stealing over chunks of probe rows
+        const size_t chunk_rows  = 4096;
+        const size_t nprobe      = probe_join_col.rows_num;
+        const size_t num_chunks  = (nprobe + chunk_rows - 1) / chunk_rows;
+
+        std::atomic<size_t> next_chunk{0};
+
+        // Each thread stores (chunk_id + columns).
+        // Later we merge chunks in chunk order to remain deterministic.
+        struct ChunkOut {
+            size_t       chunk_id;
+            ExecuteResult cols;
+        };
+
+        std::vector<std::vector<ChunkOut>> thread_chunks(num_threads);
+
+        auto make_cols = [&]() {
+            ExecuteResult cols;
+            cols.reserve(output_attrs.size());
+            for (auto [idx, dtype] : output_attrs) {
+                cols.emplace_back(column_t(dtype));
+            }
+            return cols;
+        };
+
+        std::vector<std::thread> threads;
+        threads.reserve(num_threads);
+
+        for (size_t tid = 0; tid < num_threads; ++tid) {
+            threads.emplace_back([&, tid]() {
+                while (true) {
+                    size_t cid = next_chunk.fetch_add(1, std::memory_order_relaxed);
+                    if (cid >= num_chunks) break;
+
+                    size_t begin = cid * chunk_rows;
+                    size_t end   = std::min(nprobe, begin + chunk_rows);
+
+                    ChunkOut out;
+                    out.chunk_id = cid;
+                    out.cols     = make_cols();
+
+                    for (size_t row_idx = begin; row_idx < end; ++row_idx) {
+                        auto v = probe_join_col.get_row_value(row_idx);
+                        if (v.is_null()) continue;
+                        if (!v.is_int32()) throw std::runtime_error("Join key isn't of type int32_t");
+
+                        uint32_t key = static_cast<uint32_t>(v.get_int32());
+
+                        index.probe(key, [&](size_t build_idx) {
+                            size_t out_idx = 0;
+                            for (auto [col_idx, _] : output_attrs) {
+                                value_t val;
+
+                                // Get output column value from left+right in correct order
+                                if (build_left) {
+                                    if (col_idx < left.size()) {
+                                        val = build_side[col_idx][build_idx];
+                                    } else {
+                                        val = probe_side[col_idx - left.size()][row_idx];
+                                    }
+                                } else {
+                                    if (col_idx < left.size()) {
+                                        val = probe_side[col_idx][row_idx];
+                                    } else {
+                                        val = build_side[col_idx - left.size()][build_idx];
+                                    }
+                                }
+
+                                out.cols[out_idx++].append_row(val);
+                            }
+                        });
+                    }
+
+                    thread_chunks[tid].push_back(std::move(out));
+                }
+            });
+        }
+
+        for (auto& th : threads) th.join();
+        threads.clear();
+
+        // ---------- AGGREGATION: single-threaded, deterministic ----------
+        std::vector<ChunkOut*> all;
+        all.reserve(num_chunks);
+
+        for (auto& vec : thread_chunks) {
+            for (auto& co : vec) {
+                all.push_back(&co);
+            }
+        }
+
+        std::sort(all.begin(), all.end(),
+                  [](const ChunkOut* a, const ChunkOut* b) { return a->chunk_id < b->chunk_id; });
+
+        for (auto* co : all) {
+            for (size_t c = 0; c < results.size(); ++c) {
+                merge_column_pages(results[c], co->cols[c]);
+            }
+        }
     }
-    #endif
 };
 
 ExecuteResult execute_hash_join(const Plan&          plan,
