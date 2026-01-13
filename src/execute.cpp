@@ -3,6 +3,7 @@
 #include <table.h>
 #include <inner_column.h>
 #include "hash_config.h"
+#include <iostream>
 #include "base_std_hash.h"
 #include "value_t.h"
 #include "column_t.h"
