@@ -83,10 +83,10 @@ struct PartitionedDirectoryHash {
         return static_cast<uint16_t>(h);
     }
 
-    // Build with: (1) partitioning, (2) count+prefix+copy per partition
+    // Build with  partitioning and count+prefix+copy per partition
     template <class GetKeyFn>
     void build(size_t total_rows, size_t num_threads, GetKeyFn&& get_key) {
-        // -------- Phase 1: Threaded partitioning into temporary per(thread,partition) vectors --------
+        //Phase 1 Threaded partitioning into temporary per(thread,partition) vectors
         std::vector<ThreadLocalPartitions> tls(num_threads);
         for (size_t t = 0; t < num_threads; ++t) {
             tls[t].part_vec.resize(numParts);
@@ -95,27 +95,6 @@ struct PartitionedDirectoryHash {
 
         std::vector<std::thread> threads;
         threads.reserve(num_threads);
-
-        for (size_t tid = 0; tid < num_threads; ++tid) {
-            threads.emplace_back([&, tid]() {
-                auto r = split_range(total_rows, tid, num_threads);
-                auto& local = tls[tid];
-
-                for (size_t row = r.begin; row < r.end; ++row) {
-                    // get_key(row) -> optional key; caller will throw/skip as needed
-                    auto ok = get_key(row);
-                    if (!ok.has_value()) continue;
-
-                    uint32_t key = ok.value();
-                    uint64_t h   = splitmix64(static_cast<uint64_t>(key));
-                    size_t part  = h >> (64 - static_cast<size_t>(std::log2(numParts))); // top bits
-
-                }
-            });
-        }
-
-        for (auto& th : threads) th.join();
-        threads.clear();
 
         // Correct partitioning with integer shift
         const size_t partShift = 64 - static_cast<size_t>(__builtin_ctzll(numParts)); // log2(numParts)
@@ -140,7 +119,7 @@ struct PartitionedDirectoryHash {
         for (auto& th : threads) th.join();
         threads.clear();
 
-        // -------- Phase 2: One thread aggregates partition counts, computes partition offsets --------
+        // Phase 2 One thread aggregates partition counts, computes partition offsets 
         partCounts.assign(numParts, 0);
         for (size_t p = 0; p < numParts; ++p) {
             size_t sum = 0;
@@ -157,7 +136,7 @@ struct PartitionedDirectoryHash {
         // directory[-1] points to base (index 0)
         directory[-1] = (0ull << 16);
 
-        // -------- Phase 3: postProcessBuild per partition (parallel) --------
+        //Phase 3 postProcessBuild per partition (parallel)
 
         for (size_t tid = 0; tid < num_threads; ++tid) {
             threads.emplace_back([&, tid]() {
@@ -166,8 +145,8 @@ struct PartitionedDirectoryHash {
                 for (size_t part = pr.begin; part < pr.end; ++part) {
                     if (partCounts[part] == 0) continue;
 
-                    // 3a) Counting: directory[slot] += (count<<16) and OR tag
-                    // First compute slot range for this partition:
+                    // Counting: directory[slot] += (count<<16) and OR tag
+                    // Compute slot range for this partition:
                     // k = 64 - shift = dir_bits
                     const uint64_t k = 64 - shift; // == dir_bits
                     const uint64_t start = (static_cast<uint64_t>(part) << k) / numParts;
@@ -184,7 +163,7 @@ struct PartitionedDirectoryHash {
                         }
                     }
 
-                    // 3b) Prefix sum -> convert counts to pointers (indices)
+                    //Prefix sum -> convert counts to pointers (indices)
                     uint64_t cur = static_cast<uint64_t>(partOffsets[part]); // prevCount in pseudo
                     for (uint64_t i = start; i < end; ++i) {
                         uint64_t val = directory[i] >> 16; // count
@@ -192,7 +171,7 @@ struct PartitionedDirectoryHash {
                         cur += val;
                     }
 
-                    // 3c) Copy tuples into final contiguous storage and advance pointers
+                    //Copy tuples into final contiguous storage and advance pointers
                     for (size_t t = 0; t < num_threads; ++t) {
                         auto& vec = tls[t].part_vec[part];
                         for (auto& tup : vec) {

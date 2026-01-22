@@ -15,7 +15,7 @@ static inline void merge_column_pages(column_t& dst, column_t& src) {
     }
 
     if (dst.rows_num == 0 && dst.pages.empty() && !dst.direct_flag) {
-        dst.pages.reserve(dst.pages.size() + src.pages.size());
+        dst.pages.reserve(src.pages.size());
         for (auto& p : src.pages) {
             dst.pages.push_back(std::move(p));
         }
