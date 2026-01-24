@@ -74,7 +74,7 @@ public:
 struct SlabAllocator {
 
     static constexpr size_t LARGE_CHUNK = 2 * 1024 * 1024; //2MB
-    static constexpr size_t SMALL_CHUNK = 64 * 1024; //64KB
+    static constexpr size_t SMALL_CHUNK = 256 * 1024; //256KB
 
     GlobalAllocator* level1;
     BumpAlloc level2;
