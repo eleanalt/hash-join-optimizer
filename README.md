@@ -281,3 +281,7 @@ Below are the execution times measured after the implementation of late materili
 | **Cuckoo**         | 58k ms   |
 | **Unchained**      | 37k ms   |
 
+
+| Final Implementation | Time (ms) |
+|--------------------|-----------|
+| **Unchained** | 15k ms   |
