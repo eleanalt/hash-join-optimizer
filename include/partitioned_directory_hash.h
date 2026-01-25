@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <stdexcept>
 
+#include "slab_allocator.h"
+
 namespace Contest {
 
 // 64-bit hash (stable & good spread)
@@ -49,10 +51,6 @@ struct DirTuple {
     size_t   row;    // build row id
 };
 
-struct ThreadLocalPartitions {
-    std::vector<std::vector<DirTuple>> part_vec; // [numParts] vectors
-    std::vector<size_t>                counts;   // [numParts]
-};
 
 struct PartitionedDirectoryHash {
     std::vector<uint64_t> directory_store;
@@ -87,10 +85,12 @@ struct PartitionedDirectoryHash {
     template <class GetKeyFn>
     void build(size_t total_rows, size_t num_threads, GetKeyFn&& get_key) {
         //Phase 1 Threaded partitioning into temporary per(thread,partition) vectors
-        std::vector<ThreadLocalPartitions> tls(num_threads);
+        GlobalAllocator global;
+        std::vector<SlabAllocator> tls;
+        tls.reserve(num_threads);
+
         for (size_t t = 0; t < num_threads; ++t) {
-            tls[t].part_vec.resize(numParts);
-            tls[t].counts.assign(numParts, 0);
+            tls.emplace_back(&global, numParts);
         }
 
         std::vector<std::thread> threads;
@@ -101,7 +101,6 @@ struct PartitionedDirectoryHash {
         for (size_t tid = 0; tid < num_threads; ++tid) {
             threads.emplace_back([&, tid]() {
                 auto r = split_range(total_rows, tid, num_threads);
-                auto& local = tls[tid];
 
                 for (size_t row = r.begin; row < r.end; ++row) {
                     auto ok = get_key(row);
@@ -111,8 +110,7 @@ struct PartitionedDirectoryHash {
                     uint64_t h   = splitmix64(static_cast<uint64_t>(key));
                     size_t part  = h >> partShift; // top bits
 
-                    local.part_vec[part].push_back(DirTuple{h, key, row});
-                    local.counts[part] += 1;
+                    tls[tid].consume(DirTuple{h,key,row},part);
                 }
             });
         }
@@ -152,14 +150,18 @@ struct PartitionedDirectoryHash {
                     const uint64_t start = (static_cast<uint64_t>(part) << k) / numParts;
                     const uint64_t end   = ((static_cast<uint64_t>(part) + 1) << k) / numParts;
 
-                    for (size_t t = 0; t < num_threads; ++t) {
-                        auto& vec = tls[t].part_vec[part];
-                        for (auto& tup : vec) {
-                            uint64_t slot = tup.hash >> shift; // [0, dir_size)
-                            // slot should lie in [start, end)
-                            (void)start; (void)end;
-                            directory[slot] += (1ull << 16);
-                            directory[slot] |= computeTag(tup.hash);
+                    for(size_t t = 0; t < num_threads; ++t) {
+                        Chunk* chunk = tls[t].level3[part].getChunks();
+                        while(chunk!=nullptr) {
+                            DirTuple* tuples = (DirTuple*)(chunk + 1);
+                            size_t num_tuples = chunk->bytes_used / sizeof(DirTuple);
+
+                            for (size_t i = 0; i < num_tuples; ++i) {
+                                uint64_t slot = tuples[i].hash >> shift;
+                                directory[slot] += (1ull << 16);
+                                directory[slot] |= computeTag(tuples[i].hash);
+                            }
+                            chunk = chunk->next;
                         }
                     }
 
@@ -173,12 +175,19 @@ struct PartitionedDirectoryHash {
 
                     //Copy tuples into final contiguous storage and advance pointers
                     for (size_t t = 0; t < num_threads; ++t) {
-                        auto& vec = tls[t].part_vec[part];
-                        for (auto& tup : vec) {
-                            uint64_t slot = tup.hash >> shift;
-                            uint64_t target = directory[slot] >> 16; // index
-                            tupleStorage[static_cast<size_t>(target)] = tup;
-                            directory[slot] += (1ull << 16); // advance pointer
+                        Chunk* chunk = tls[t].level3[part].getChunks();
+                        while(chunk != nullptr) {
+                            
+                            DirTuple* tuples = (DirTuple*)(chunk + 1);
+                            size_t num_tuples = chunk->bytes_used / sizeof(DirTuple);
+                            
+                            for (size_t i = 0; i < num_tuples; ++i) {
+                                uint64_t slot = tuples[i].hash >> shift;
+                                uint64_t target = directory[slot] >> 16;
+                                tupleStorage[static_cast<size_t>(target)] = tuples[i];
+                                directory[slot] += (1ull << 16);
+                            }
+                            chunk = chunk->next;
                         }
                     }
                 }
