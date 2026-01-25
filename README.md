@@ -201,6 +201,16 @@ Our implementation for phase 2 was developed collaboratively:
 
 - **1115202100174 — Αλέξιος Σούλι**  
   Focused on **Late Materialization** and **Joins in Column Store**
+# Phase 3 
+
+## Contributors
+Our implementation for phase 3 was developed collaboratively:
+
+- **1115202100089 — Ελεάνα Λύτη**  
+  Focused on the initial setup of the Parallel Hashing and the final report.
+
+- **1115202100174 — Αλέξιος Σούλι**  
+  Focused on **Slab Allocator** and **the final optimization**
   
 ## Selecting a Hashing Algorithm
 To compile with a specific hashing algorithm other than `std::unordered_map` run:
@@ -259,7 +269,7 @@ Below are the execution times measured during benchmarking:
 | **Robinhood**      | 333k ms   |
 | **Hopscotch**      | 343k ms   |
 | **Cuckoo**         | 330k ms   |
-| **Cuckoo**         | 240k ms   |
+| **Unchained**      | 240k ms   |
 
 Below are the execution times measured after the implementation of late materilization and joins in column store:
 
