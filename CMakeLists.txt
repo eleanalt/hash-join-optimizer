@@ -98,6 +98,7 @@ add_executable(hopscotch_tests ${SIGMODPC_SRC} tests/hopscotch_tests.cpp)
 add_executable(unchained_tests ${SIGMODPC_SRC} tests/unchained_tests.cpp)
 add_executable(valuet_tests ${SIGMODPC_SRC} tests/valuet_tests.cpp)
 add_executable(columnt_tests ${SIGMODPC_SRC} tests/columnt_tests.cpp)
+add_executable(slab_allocator_tests ${SIGMODPC_SRC} tests/slab_allocator_tests.cpp)
 
 add_test(NAME unit_tests COMMAND unit_tests)
 add_test(NAME robinhood_tests COMMAND robinhood_tests)
@@ -106,6 +107,8 @@ add_test(NAME hopscotch_tests COMMAND hopscotch_tests)
 add_test(NAME unchained_tests COMMAND unchained_tests)
 add_test(NAME valuet_tests COMMAND valuet_tests)
 add_test(NAME columnt_tests COMMAND columnt_tests)
+add_test(NAME slab_allocator_tests COMMAND slab_allocator_tests)
+
 
 add_custom_target(all_tests)
 add_dependencies(all_tests
@@ -146,6 +149,7 @@ target_link_libraries(hopscotch_tests PRIVATE re2 range-v3 fmt Catch2::Catch2Wit
 target_link_libraries(unchained_tests PRIVATE re2 range-v3 fmt Catch2::Catch2WithMain)
 target_link_libraries(valuet_tests PRIVATE re2 range-v3 fmt Catch2::Catch2WithMain)
 target_link_libraries(columnt_tests PRIVATE re2 range-v3 fmt Catch2::Catch2WithMain)
+target_link_libraries(slab_allocator_tests PRIVATE re2 range-v3 fmt Catch2::Catch2WithMain)
 
 
 
@@ -159,6 +163,8 @@ target_include_directories(hopscotch_tests PRIVATE include)
 target_include_directories(unchained_tests PRIVATE include)
 target_include_directories(valuet_tests PRIVATE include)
 target_include_directories(columnt_tests PRIVATE include)
+target_include_directories(slab_allocator_tests PRIVATE include)
+
 
 
 
