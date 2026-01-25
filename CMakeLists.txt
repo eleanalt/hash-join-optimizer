@@ -119,6 +119,7 @@ add_dependencies(all_tests
     unchained_tests
     valuet_tests
     columnt_tests
+    slab_allocator_tests
 )
 
 
