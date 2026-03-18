@@ -1,4 +1,4 @@
-# hash-join-optimizer
+# Hash Join Optimizer
 
 A high-performance in-memory hash join pipeline built in C++, developed as part of the [SIGMOD 2025 Programming Contest](https://sigmod-contest-2025.github.io). The project explores advanced database internals — from custom hash table designs to parallel execution — achieving a **>16× speedup** over the baseline implementation.
 
