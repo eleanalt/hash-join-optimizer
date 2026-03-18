@@ -116,4 +116,4 @@ Correctness is also validated automatically on every push via **GitHub Actions**
 
 ---
 
-| Eleana Lyti | 
+Eleana Lyti 
