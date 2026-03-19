@@ -114,6 +114,4 @@ Correctness is also validated automatically on every push via **GitHub Actions**
 - **Testing**: Custom unit test suites + GitHub Actions CI
 - **Dataset**: IMDB (JOB benchmark)
 
----
 
-Eleana Lyti 
